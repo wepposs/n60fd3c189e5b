@@ -186,6 +186,7 @@ public class ModernDynamicIslandElement extends HudElement {
         String subtitle;
         String timer;
         float progress = -1f;
+        boolean playing = true;
         ItemStack disc;
         Lyrics.Doc lyrics;
         long positionMs;
@@ -234,14 +235,11 @@ public class ModernDynamicIslandElement extends HudElement {
                 state.subtitle = track.artist();
                 state.positionMs = track.interpolatedPositionMs();
                 state.durationMs = track.durationMs();
+                state.playing = track.playing();
                 if (state.durationMs > 0L) {
                     state.progress = clamp01(state.positionMs / (float) state.durationMs);
                 }
                 state.lyrics = Lyrics.get(track.title(), track.artist(), state.durationMs);
-                if (state.lyrics == null) {
-                    state.title = track.title();
-                    state.subtitle = track.artist();
-                }
                 return state;
             }
         }
@@ -630,7 +628,17 @@ public class ModernDynamicIslandElement extends HudElement {
             float contentX = x + PILL_PAD * ui;
 
             if (music) {
-                drawEqualizer(renderer, contentX, centerY, themeColor, globalAlpha);
+                if (state.playing) {
+                    drawEqualizer(renderer, contentX, centerY, themeColor, globalAlpha);
+                } else {
+                    // Пауза: полоски замерли на минимальной высоте.
+                    for (int i = 0; i < EQ_COUNT; i++) {
+                        float h = EQ_MIN_H * ui;
+                        float barX = contentX + i * (EQ_BAR_W + EQ_GAP) * ui;
+                        renderer.rect(barX, centerY - h / 2f, EQ_BAR_W * ui, h, EQ_BAR_W * ui / 2f,
+                                ColorUtil.replAlpha(themeColor, (int) (160 * globalAlpha)));
+                    }
+                }
                 contentX += EQ_TOTAL_W * ui + EQ_TEXT_GAP * ui;
                 if (hasDisc) {
                     drawItemIcon(ctx, state.disc, contentX, centerY - DISC_SIZE * ui / 2f, DISC_SIZE * ui, globalAlpha);

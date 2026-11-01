@@ -67,12 +67,12 @@ public final class NowPlaying {
         return SUPPORTED;
     }
 
-    /** Текущий играющий трек или {@code null}, если ничего не играет. */
+    /** Текущий трек (включая паузу — караоке просто замирает) или {@code null}. */
     public static Track current() {
         if (!SUPPORTED || permanentlyUnavailable) return null;
         ensureStarted();
         Track t = track;
-        return t != null && t.playing() && t.title() != null && !t.title().isBlank() ? t : null;
+        return t != null && t.title() != null && !t.title().isBlank() ? t : null;
     }
 
     private static void ensureStarted() {
@@ -230,13 +230,17 @@ public final class NowPlaying {
             while ($true) {
               $line = "0|||||||"
               try {
-                $session = $null
-                foreach ($cand in $mgr.GetSessions()) {
-                  try {
-                    if ($cand.GetPlaybackInfo().PlaybackStatus.ToString() -eq 'Playing') { $session = $cand; break }
-                  } catch { }
-                }
-                if (-not $session) { $session = $mgr.GetCurrentSession() }
+                $session = $mgr.GetCurrentSession()
+                if ($session) {
+                  # Пауза не «нет трека»: держим текущую сессию, но приоритет —
+                  # реально играющей, если есть несколько.
+                  $playing = $null
+                  foreach ($cand in $mgr.GetSessions()) {
+                    try {
+                      if ($cand.GetPlaybackInfo().PlaybackStatus.ToString() -eq 'Playing') { $playing = $cand; break }
+                    } catch { }
+                  }
+                  if ($playing) { $session = $playing }
                 if ($session) {
                   $props = Await ($session.TryGetMediaPropertiesAsync()) $propsType
                   $tl = $session.GetTimelineProperties()
