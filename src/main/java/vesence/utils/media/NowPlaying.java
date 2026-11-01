@@ -55,7 +55,6 @@ public final class NowPlaying {
     private static volatile Track track;
     private static volatile Process process;
     private static volatile boolean started;
-    private static volatile boolean permanentlyUnavailable;
     private static volatile long lastStartAttemptMs;
     private static final AtomicBoolean STARTING = new AtomicBoolean();
     private static volatile boolean shutdownHookInstalled;
@@ -69,7 +68,7 @@ public final class NowPlaying {
 
     /** Текущий трек (включая паузу — караоке просто замирает) или {@code null}. */
     public static Track current() {
-        if (!SUPPORTED || permanentlyUnavailable) return null;
+        if (!SUPPORTED) return null;
         ensureStarted();
         Track t = track;
         return t != null && t.title() != null && !t.title().isBlank() ? t : null;
@@ -145,8 +144,9 @@ public final class NowPlaying {
             // Скрипт ни разу не отрапортовал READY — WinRT/SMTC в системе не
             // доступен. Больше не спавним PowerShell каждые 20 секунд.
             if (!readySeen) {
-                permanentlyUnavailable = true;
-                System.out.println("[NowPlaying] SMTC unavailable (no READY), disabled");
+                // Не отключаем сервис навсегда: PowerShell/WinRT может временно
+                // не стартовать во время загрузки клиента.
+                lastStartAttemptMs = 0L;
             }
             Process cur = process;
             if (cur != null && cur.isAlive()) cur.destroy();
@@ -227,21 +227,29 @@ public final class NowPlaying {
               if ([string]::IsNullOrEmpty($s)) { return "" }
               return [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($s))
             }
+            $selectedApp = $null
             while ($true) {
               $line = "0|||||||"
               try {
-                $session = $mgr.GetCurrentSession()
-                if ($session) {
-                  # Пауза не «нет трека»: держим текущую сессию, но приоритет —
-                  # реально играющей, если есть несколько.
-                  $playing = $null
-                  foreach ($cand in $mgr.GetSessions()) {
-                    try {
-                      if ($cand.GetPlaybackInfo().PlaybackStatus.ToString() -eq 'Playing') { $playing = $cand; break }
-                    } catch { }
+                $sessions = @($mgr.GetSessions())
+                $playing = @($sessions | Where-Object {
+                  try { $_.GetPlaybackInfo().PlaybackStatus.ToString() -eq 'Playing' } catch { $false }
+                })
+                $session = $null
+                if ($selectedApp) {
+                  foreach ($cand in $playing) {
+                    if ($cand.SourceAppUserModelId -eq $selectedApp) { $session = $cand; break }
                   }
-                  if ($playing) { $session = $playing }
+                }
+                if (-not $session -and $playing.Count -gt 0) { $session = $playing[0] }
+                if (-not $session -and $selectedApp) {
+                  foreach ($cand in $sessions) {
+                    if ($cand.SourceAppUserModelId -eq $selectedApp) { $session = $cand; break }
+                  }
+                }
+                if (-not $session) { $session = $mgr.GetCurrentSession() }
                 if ($session) {
+                  $selectedApp = $session.SourceAppUserModelId
                   $props = Await ($session.TryGetMediaPropertiesAsync()) $propsType
                   $tl = $session.GetTimelineProperties()
                   $status = $session.GetPlaybackInfo().PlaybackStatus.ToString()

@@ -64,13 +64,13 @@ public class ModernDynamicIslandElement extends HudElement {
     // ── геометрия таблетки ───────────────────────────────────────────────────
     // Размеры — в «дизайн-пикселях» холста 1920×1080 (позиции элементов хранятся
     // так же); при рендере умножаются на ui() — масштаб текущего вьюпорта.
-    private static final float PILL_H         = 42f;
-    private static final float MIN_W          = 132f;
+    private static final float PILL_H         = 36f;
+    private static final float MIN_W          = 96f;
     private static final float CONTENT_MAX_W  = 480f;
     private static final float MUSIC_MAX_W    = 640f;
-    private static final float PILL_PAD       = 14f;
-    private static final float TEXT_SIZE      = 26f;
-    private static final float SUB_TEXT_SIZE  = 19f;
+    private static final float PILL_PAD       = 10f;
+    private static final float TEXT_SIZE      = 22f;
+    private static final float SUB_TEXT_SIZE  = 16f;
     private static final float ICON_SIZE      = 8f;
     private static final float ICON_GAP       = 8f;
     private static final float DISC_SIZE      = 22f;
