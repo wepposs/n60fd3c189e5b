@@ -49,7 +49,7 @@ public final class NowPlaying {
 
     private static final boolean SUPPORTED = System.getProperty("os.name", "")
             .toLowerCase(Locale.ROOT).contains("win");
-    private static final long POLL_MS = 700L;
+    private static final long POLL_MS = 300L;
     private static final long RESTART_BACKOFF_MS = 20_000L;
 
     private static volatile Track track;
@@ -279,7 +279,14 @@ public final class NowPlaying {
                   $props = Await ($session.TryGetMediaPropertiesAsync()) $propsType
                   $tl = $session.GetTimelineProperties()
                   $status = $session.GetPlaybackInfo().PlaybackStatus.ToString()
-                  $pos = [math]::Round($tl.Position.TotalSeconds, 3)
+                  $pos = $tl.Position.TotalSeconds
+                  # Position относится к моменту LastUpdatedTime: проецируем на
+                  # «сейчас», иначе караоке отстаёт от реального воспроизведения.
+                  try {
+                    $stale = ([DateTimeOffset]::Now - $tl.LastUpdatedTime).TotalSeconds
+                    if ($stale -gt 0 -and $stale -lt 3) { $pos = $pos + $stale }
+                  } catch { }
+                  $pos = [math]::Round($pos, 3)
                   $end = [math]::Round($tl.EndTime.TotalSeconds, 3)
                   $app = $session.SourceAppUserModelId
                   $line = "1|$status|$pos|$end|$(B64 $props.Title)|$(B64 $props.Artist)|$(B64 $props.AlbumTitle)|$(B64 $app)"
@@ -287,7 +294,7 @@ public final class NowPlaying {
               } catch { $line = "0|||||||" }
               [Console]::Out.WriteLine($line)
               [Console]::Out.Flush()
-              Start-Sleep -Milliseconds 700
+              Start-Sleep -Milliseconds 300
             }
             """;
 }

@@ -664,6 +664,8 @@ public class ModernDynamicIslandElement extends HudElement {
                     float span = Math.max(1L, token.endMs() - token.startMs());
                     float fraction = clamp01((karaokePos - token.startMs()) / span);
                     float width = measure(renderer, f, token.text(), TEXT_SIZE * ui);
+                    renderer.text(f, contentX, baseline, TEXT_SIZE * ui, token.text(),
+                            ColorUtil.replAlpha(-1, (int) (UNSUNG_ALPHA * globalAlpha)), -0.05f);
                     float sungWidth = width * fraction;
                     if (sungWidth > 0.01f) {
                         renderer.pushClipRect(contentX, y, sungWidth, PILL_H * ui);
@@ -674,9 +676,6 @@ public class ModernDynamicIslandElement extends HudElement {
                             renderer.popClipRect();
                         }
                     }
-                    float remainingAlpha = UNSUNG_ALPHA + (SUNG_ALPHA - UNSUNG_ALPHA) * fraction;
-                    renderer.text(f, contentX, baseline, TEXT_SIZE * ui, token.text(),
-                            ColorUtil.replAlpha(-1, (int) (remainingAlpha * globalAlpha)), -0.05f);
                     contentX += width;
                 }
             } else {
