@@ -118,6 +118,7 @@ public final class NowPlaying {
         boolean readySeen = false;
         String lastLoggedTitle = null;
         Track lastTrack = null;
+        long lastRawPositionMs = -1L;
         try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(p.getInputStream(), StandardCharsets.US_ASCII))) {
             String line;
@@ -134,17 +135,20 @@ public final class NowPlaying {
                             && parsed.title().equals(lastTrack.title())
                             && parsed.artist().equals(lastTrack.artist())
                             && parsed.playing() && lastTrack.playing()) {
-                        long projected = lastTrack.interpolatedPositionMs();
-                        if (parsed.positionMs() < projected - 2500L) {
+                        boolean rewound = lastRawPositionMs >= 0L
+                                && parsed.positionMs() < lastRawPositionMs - 2500L;
+                        if (rewound) {
                             lastTrack = parsed;
                         } else {
-                            long monotonicPosition = Math.max(parsed.positionMs(), projected);
+                            long monotonicPosition = Math.max(parsed.positionMs(), lastTrack.interpolatedPositionMs());
                             lastTrack = new Track(parsed.title(), parsed.artist(), parsed.album(), parsed.app(),
                                     monotonicPosition, parsed.durationMs(), true, parsed.pollNanos());
                         }
+                        lastRawPositionMs = parsed.positionMs();
                         parsed = lastTrack;
                     } else {
                         lastTrack = parsed;
+                        lastRawPositionMs = parsed.positionMs();
                     }
                     track = parsed;
                     if (!parsed.title().equals(lastLoggedTitle)) {
