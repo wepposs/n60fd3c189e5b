@@ -152,9 +152,6 @@ public class ModernDynamicIslandElement extends HudElement {
     // Анти-дребезг караоке: сглаженная позиция и удержание окна слов.
     private long smoothPositionMs = -1L;
     private String karaokeTrackKey = null;
-    private int lyricWindowStart = -1;
-    private int lyricWindowSize = 0;
-    private int lyricSungThrough = -1;
 
     // Скользящее окно BPS (как в watermark).
     private double bpsStartX = Double.NaN;
@@ -195,7 +192,7 @@ public class ModernDynamicIslandElement extends HudElement {
         boolean positive;
     }
 
-    private record Token(String text, boolean sung) {
+    private record Token(String text, long startMs, long endMs) {
     }
 
     // ── выбор состояния по приоритетам ───────────────────────────────────────
@@ -533,6 +530,7 @@ public class ModernDynamicIslandElement extends HudElement {
         // Окно караоке: ширина стабильная, чтобы островок не «дышал» каждым словом.
         List<Token> lyricTokens = null;
         float lyricsWidth = 0f;
+        long karaokePos = state.positionMs;
         if (music && state.lyrics != null) {
             float sSafe = Math.max(0.01f, elemScale);
             float maxMusicW = Math.min(MUSIC_MAX_W * ui,
@@ -542,19 +540,13 @@ public class ModernDynamicIslandElement extends HudElement {
             // Позиция для караоке: SMTC между опросами может отдавать время с
             // откатом назад — из-за этого текущее слово мигает. Двигаем позицию
             // только вперёд; назад — лишь при явной перемотке (>2.5 с).
-            long karaokePos = state.positionMs;
+            karaokePos = state.positionMs;
             String trackKey = state.title + "|" + state.durationMs;
             if (!trackKey.equals(karaokeTrackKey)) {
                 karaokeTrackKey = trackKey;
                 smoothPositionMs = karaokePos;
-                lyricWindowStart = -1;
-                lyricWindowSize = 0;
-                lyricSungThrough = -1;
             } else if (karaokePos < smoothPositionMs - 2500L) {
-                // Явная перемотка: переставляем указатель только если позиция
-                // заметно отличается от текущей позиции трека.
                 smoothPositionMs = karaokePos;
-                lyricSungThrough = -1;
             } else {
                 smoothPositionMs = Math.max(smoothPositionMs, karaokePos);
                 karaokePos = smoothPositionMs;
@@ -669,10 +661,23 @@ public class ModernDynamicIslandElement extends HudElement {
             if (lyricTokens != null) {
                 float baseline = baselineFor(centerY, TEXT_SIZE * ui);
                 for (Token token : lyricTokens) {
-                    int alpha = token.sung() ? SUNG_ALPHA : UNSUNG_ALPHA;
+                    float span = Math.max(1L, token.endMs() - token.startMs());
+                    float fraction = clamp01((karaokePos - token.startMs()) / span);
+                    float width = measure(renderer, f, token.text(), TEXT_SIZE * ui);
+                    float sungWidth = width * fraction;
+                    if (sungWidth > 0.01f) {
+                        renderer.pushClipRect(contentX, y, sungWidth, PILL_H * ui);
+                        try {
+                            renderer.text(f, contentX, baseline, TEXT_SIZE * ui, token.text(),
+                                    ColorUtil.replAlpha(-1, (int) (SUNG_ALPHA * globalAlpha)), -0.05f);
+                        } finally {
+                            renderer.popClipRect();
+                        }
+                    }
+                    float remainingAlpha = UNSUNG_ALPHA + (SUNG_ALPHA - UNSUNG_ALPHA) * fraction;
                     renderer.text(f, contentX, baseline, TEXT_SIZE * ui, token.text(),
-                            ColorUtil.replAlpha(-1, (int) (alpha * globalAlpha)), -0.05f);
-                    contentX += measure(renderer, f, token.text(), TEXT_SIZE * ui);
+                            ColorUtil.replAlpha(-1, (int) (remainingAlpha * globalAlpha)), -0.05f);
+                    contentX += width;
                 }
             } else {
                 renderer.text(f, contentX, baselineFor(centerY, TEXT_SIZE * ui), TEXT_SIZE * ui, displayText,
@@ -728,7 +733,6 @@ public class ModernDynamicIslandElement extends HudElement {
             if (words.get(i).startMs() <= positionMs) current = i;
             else break;
         }
-        lyricSungThrough = Math.max(lyricSungThrough, current);
 
         int start = Math.max(0, current - 2);
         if (n - start < MIN_VISIBLE_WORDS && n >= MIN_VISIBLE_WORDS) {
@@ -742,7 +746,7 @@ public class ModernDynamicIslandElement extends HudElement {
             String piece = (tokens.isEmpty() ? "" : " ") + word.text();
             float pieceW = measure(renderer, f, piece, TEXT_SIZE * ui);
             if (width + pieceW > maxTextW) break;
-            tokens.add(new Token(piece, i <= lyricSungThrough));
+            tokens.add(new Token(piece, word.startMs(), word.endMs()));
             width += pieceW;
             if (tokens.size() >= MAX_VISIBLE_WORDS) break;
         }
@@ -752,12 +756,9 @@ public class ModernDynamicIslandElement extends HudElement {
             String piece = word.text() + " ";
             float pieceW = measure(renderer, f, piece, TEXT_SIZE * ui);
             if (width + pieceW > maxTextW) break;
-            tokens.add(0, new Token(piece, start <= lyricSungThrough));
+            tokens.add(0, new Token(piece, word.startMs(), word.endMs()));
             width += pieceW;
         }
-
-        lyricWindowStart = start;
-        lyricWindowSize = tokens.size();
         return tokens.isEmpty() ? null : tokens;
     }
 
