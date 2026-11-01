@@ -77,6 +77,9 @@ public class ModernDynamicIslandElement extends HudElement {
     private static final float DISC_GAP       = 7f;
     private static final float RADIUS_BASE    = 14f;
     private static final float BLUR_STRENGTH  = 45f;
+    /** Островок всегда по центру; сверху — не впритык к краю. */
+    private static final float MIN_TOP        = 24f;
+    private static final float SIDE_MARGIN    = 8f;
     private static final long  MODULE_SHOW_MS = 3000L;
     private static final int[] PING_THRESHOLDS = {450, 300, 150, 75};
 
@@ -120,6 +123,7 @@ public class ModernDynamicIslandElement extends HudElement {
     // ── анимации ─────────────────────────────────────────────────────────────
     private final Animation2 widthAnim      = new Animation2();
     private final Animation2 visibilityAnim = new Animation2();
+    private final Animation2 lyricSlideAnim = new Animation2();
 
     /** Хук переключения модуля: имя + включён/выключен (порт Module.setEnabled). */
     private static volatile String lastToggledModule;
@@ -152,6 +156,12 @@ public class ModernDynamicIslandElement extends HudElement {
     // Анти-дребезг караоке: сглаженная позиция и удержание окна слов.
     private long smoothPositionMs = -1L;
     private String karaokeTrackKey = null;
+    /** Фактические координаты отрисовки: островок центрируется по экрану. */
+    private float drawX = 0f;
+    private float drawY = 0f;
+    /** Плавный сдвиг строки при переключении окна слов. */
+    private float lyricSlidePx = 0f;
+    private int prevLyricStart = -1;
 
     // Скользящее окно BPS (как в watermark).
     private double bpsStartX = Double.NaN;
@@ -533,8 +543,9 @@ public class ModernDynamicIslandElement extends HudElement {
         long karaokePos = state.positionMs;
         if (music && state.lyrics != null) {
             float sSafe = Math.max(0.01f, elemScale);
+            float availableW = screenWidth - SIDE_MARGIN * 2f;
             float maxMusicW = Math.min(MUSIC_MAX_W * ui,
-                    Math.max(MIN_W * ui, (screenWidth - x - 8f) / sSafe));
+                    Math.max(MIN_W * ui, availableW / sSafe));
             float lyricTextW = Math.max(60f * ui, maxMusicW - PILL_PAD * 2f * ui - leadW);
 
             // Позиция для караоке: SMTC между опросами может отдавать время с
@@ -545,6 +556,7 @@ public class ModernDynamicIslandElement extends HudElement {
             if (!trackKey.equals(karaokeTrackKey)) {
                 karaokeTrackKey = trackKey;
                 smoothPositionMs = karaokePos;
+                prevLyricStart = -1;
             } else if (karaokePos < smoothPositionMs - 2500L) {
                 smoothPositionMs = karaokePos;
             } else {
@@ -565,7 +577,7 @@ public class ModernDynamicIslandElement extends HudElement {
 
         float maxPillW = music ? MUSIC_MAX_W * ui : CONTENT_MAX_W * ui;
         maxPillW = Math.min(maxPillW,
-                Math.max(MIN_W * ui, (screenWidth - x - 8f) / Math.max(0.01f, elemScale)));
+                Math.max(MIN_W * ui, (screenWidth - SIDE_MARGIN * 2f) / Math.max(0.01f, elemScale)));
 
         float subW = 0f;
         String subText = null;
@@ -607,23 +619,31 @@ public class ModernDynamicIslandElement extends HudElement {
         float globalAlpha = (float) visibilityAnim.get();
         if (globalAlpha < 0.005f) return;
 
+        // Островок всегда по центру экрана и с отступом от верха.
+        drawX = (screenWidth - rectW * elemScale) / 2f;
+        drawY = Math.max(y, MIN_TOP);
+
         int themeColor = Renderer2D.ColorUtil.getClientColor();
 
         // ---- Фон: blur 45 + чёрный squircle 85% ----
         if (isBlurEnabled()) {
-            renderer.blur(x, y, rectW, rectH, BLUR_STRENGTH, radius, globalAlpha);
+            renderer.blur(drawX, drawY, rectW, rectH, BLUR_STRENGTH, radius, globalAlpha);
         }
-        renderer.shadow(x, y, rectW, rectH, radius, 8f * ui, 1f,
+        renderer.shadow(drawX, drawY, rectW, rectH, radius, 8f * ui, 1f,
                 ColorUtil.replAlpha(ColorUtil.BLACK, (int) (55 * globalAlpha)));
-        renderer.rect(x, y, rectW, rectH, radius,
+        renderer.rect(drawX, drawY, rectW, rectH, radius,
                 ColorUtil.getColor(0, 0, 0, (int) (216.75f * globalAlpha)));
 
         // ---- Верхняя строка (таблетка) ----
-        float centerY = y + PILL_H * ui / 2f;
+        float centerY = drawY + PILL_H * ui / 2f;
 
-        renderer.pushClipRect(x, y, rectW, PILL_H * ui);
+        lyricSlideAnim.update();
+        lyricSlideAnim.run(0f, 0.18f, Easings.CUBIC_OUT);
+        float slide = lyricSlidePx * (float) lyricSlideAnim.get();
+
+        renderer.pushClipRect(drawX, drawY, rectW, PILL_H * ui);
         try {
-            float contentX = x + PILL_PAD * ui;
+            float contentX = drawX + PILL_PAD * ui;
 
             if (music) {
                 if (state.playing) {
@@ -660,23 +680,24 @@ public class ModernDynamicIslandElement extends HudElement {
 
             if (lyricTokens != null) {
                 float baseline = baselineFor(centerY, TEXT_SIZE * ui);
+                float cursor = contentX + slide;
                 for (Token token : lyricTokens) {
                     float span = Math.max(1L, token.endMs() - token.startMs());
                     float fraction = clamp01((karaokePos - token.startMs()) / span);
                     float width = measure(renderer, f, token.text(), TEXT_SIZE * ui);
-                    renderer.text(f, contentX, baseline, TEXT_SIZE * ui, token.text(),
+                    renderer.text(f, cursor, baseline, TEXT_SIZE * ui, token.text(),
                             ColorUtil.replAlpha(-1, (int) (UNSUNG_ALPHA * globalAlpha)), -0.05f);
                     float sungWidth = width * fraction;
                     if (sungWidth > 0.01f) {
-                        renderer.pushClipRect(contentX, y, sungWidth, PILL_H * ui);
+                        renderer.pushClipRect(cursor, drawY, sungWidth, PILL_H * ui);
                         try {
-                            renderer.text(f, contentX, baseline, TEXT_SIZE * ui, token.text(),
+                            renderer.text(f, cursor, baseline, TEXT_SIZE * ui, token.text(),
                                     ColorUtil.replAlpha(-1, (int) (SUNG_ALPHA * globalAlpha)), -0.05f);
                         } finally {
                             renderer.popClipRect();
                         }
                     }
-                    contentX += width;
+                    cursor += width;
                 }
             } else {
                 renderer.text(f, contentX, baselineFor(centerY, TEXT_SIZE * ui), TEXT_SIZE * ui, displayText,
@@ -737,6 +758,23 @@ public class ModernDynamicIslandElement extends HudElement {
         if (n - start < MIN_VISIBLE_WORDS && n >= MIN_VISIBLE_WORDS) {
             start = Math.max(0, n - MIN_VISIBLE_WORDS);
         }
+
+        if (start != prevLyricStart && prevLyricStart >= 0) {
+            float shift = 0f;
+            if (start > prevLyricStart) {
+                for (int i = prevLyricStart; i < start && i < n; i++) {
+                    String piece = (i == prevLyricStart ? "" : " ") + words.get(i).text();
+                    shift -= measure(renderer, f, piece, TEXT_SIZE * ui);
+                }
+            } else {
+                for (int i = start; i < prevLyricStart && i < n; i++) {
+                    shift += measure(renderer, f, words.get(i).text() + " ", TEXT_SIZE * ui);
+                }
+            }
+            lyricSlidePx = shift;
+            lyricSlideAnim.set(1.0);
+        }
+        prevLyricStart = start;
 
         List<Token> tokens = new ArrayList<>();
         float width = 0f;
@@ -799,8 +837,8 @@ public class ModernDynamicIslandElement extends HudElement {
         if (stack == null || stack.isEmpty() || alpha <= 0.01f) return;
         float elemScale = getScale();
         float guiScale = (float) Minecraft.getInstance().getWindow().getGuiScale();
-        float sx = this.x + (px - this.x) * elemScale;
-        float sy = this.y + (py - this.y) * elemScale;
+        float sx = drawX + (px - drawX) * elemScale;
+        float sy = drawY + (py - drawY) * elemScale;
         float drawSize = size * elemScale;
 
         Matrix3x2fStack m = ctx.pose();

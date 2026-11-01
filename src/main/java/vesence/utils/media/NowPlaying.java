@@ -284,8 +284,11 @@ public final class NowPlaying {
                   # «сейчас», иначе караоке отстаёт от реального воспроизведения.
                   try {
                     $stale = ([DateTimeOffset]::Now - $tl.LastUpdatedTime).TotalSeconds
-                    if ($stale -gt 0 -and $stale -lt 3) { $pos = $pos + $stale }
+                    if ($stale -gt 0 -and $stale -lt 15) { $pos = $pos + $stale }
                   } catch { }
+                  if ($tl.EndTime.TotalSeconds -gt 0) {
+                    $pos = [math]::Min($pos, $tl.EndTime.TotalSeconds)
+                  }
                   $pos = [math]::Round($pos, 3)
                   $end = [math]::Round($tl.EndTime.TotalSeconds, 3)
                   $app = $session.SourceAppUserModelId

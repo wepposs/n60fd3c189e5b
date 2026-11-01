@@ -484,7 +484,11 @@ public final class Lyrics {
         while (wm.find()) tags.add(new Tag(wm.start(), wm.end(), tsToMs(wm)));
 
         if (tags.isEmpty()) {
-            distribute(out, body, start, end);
+            // Между строкой и следующей часто есть пауза/проигрыш. Если растянуть
+            // слова на весь интервал, заливка еле ползёт. Ограничиваем окно
+            // реалистичным темпом речи/пения.
+            long singEnd = Math.min(end, start + estimateLineMs(body));
+            distribute(out, body, start, Math.max(start + 400L, singEnd));
             return;
         }
 
