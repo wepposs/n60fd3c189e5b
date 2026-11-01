@@ -117,6 +117,7 @@ public final class NowPlaying {
     private static void readLoop(Process p) {
         boolean readySeen = false;
         String lastLoggedTitle = null;
+        Track lastTrack = null;
         try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(p.getInputStream(), StandardCharsets.US_ASCII))) {
             String line;
@@ -128,6 +129,23 @@ public final class NowPlaying {
                 }
                 Track parsed = parse(line);
                 if (parsed != null) {
+                    if (lastTrack != null
+                            && parsed.app().equals(lastTrack.app())
+                            && parsed.title().equals(lastTrack.title())
+                            && parsed.artist().equals(lastTrack.artist())
+                            && parsed.playing() && lastTrack.playing()) {
+                        long projected = lastTrack.interpolatedPositionMs();
+                        if (parsed.positionMs() < projected - 2500L) {
+                            lastTrack = parsed;
+                        } else {
+                            long monotonicPosition = Math.max(parsed.positionMs(), projected);
+                            lastTrack = new Track(parsed.title(), parsed.artist(), parsed.album(), parsed.app(),
+                                    monotonicPosition, parsed.durationMs(), true, parsed.pollNanos());
+                        }
+                        parsed = lastTrack;
+                    } else {
+                        lastTrack = parsed;
+                    }
                     track = parsed;
                     if (!parsed.title().equals(lastLoggedTitle)) {
                         lastLoggedTitle = parsed.title();
@@ -235,8 +253,12 @@ public final class NowPlaying {
                 $playing = @($sessions | Where-Object {
                   try { $_.GetPlaybackInfo().PlaybackStatus.ToString() -eq 'Playing' } catch { $false }
                 })
+                $preferred = @($playing | Where-Object {
+                  $_.SourceAppUserModelId -match '(?i)yandex|spotify|music|foobar|itunes|winamp'
+                })
                 $session = $null
-                if ($selectedApp) {
+                if ($preferred.Count -gt 0) { $session = $preferred[0] }
+                if (-not $session -and $selectedApp) {
                   foreach ($cand in $playing) {
                     if ($cand.SourceAppUserModelId -eq $selectedApp) { $session = $cand; break }
                   }
