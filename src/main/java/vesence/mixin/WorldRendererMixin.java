@@ -129,6 +129,11 @@ public class WorldRendererMixin {
       vesence.utils.other.Mathf.lastProjMat.set(basicProjectionMatrix);
       vesence.utils.other.Mathf.lastModMat.identity();
       vesence.utils.other.Mathf.lastWorldSpaceMatrix.set(positionMatrix);
+      // Позиция камеры из того же кадра, что и матрицы: проекция в HUD-фазе не должна
+      // читать камеру позже (она могла успеть измениться).
+      // cameraState.pos — позиция, с которой построены viewRotation/projection этого кадра.
+      if (cameraState.pos != null) vesence.utils.other.Mathf.lastCameraPos = cameraState.pos;
+      else if (camera != null) vesence.utils.other.Mathf.lastCameraPos = camera.position();
 
       Minecraft client = Minecraft.getInstance();
       if (client != null) {

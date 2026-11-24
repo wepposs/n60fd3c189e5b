@@ -104,8 +104,11 @@ public class ModernArrayListElement extends HudElement {
             list.sort(Comparator.comparing(m -> m.name, Comparator.reverseOrder()));
             return list;
         }
-        list.sort(Comparator.comparingDouble((Module m) ->
-                -renderer.measureText(font, m.getDisplayName(), FONT_SIZE, -0.1f).width));
+        Map<Module, Float> widths = new HashMap<>(list.size() * 2);
+        for (Module m : list) {
+            widths.put(m, renderer.measureText(font, m.getDisplayName(), FONT_SIZE, -0.1f).width);
+        }
+        list.sort((a, b) -> Float.compare(widths.get(b), widths.get(a)));
         return list;
     }
 
@@ -243,7 +246,7 @@ public class ModernArrayListElement extends HudElement {
             // наслаивается, никакого лишнего прямоугольника позади списка.
             if (isBlurEnabled()) {
                 float blurY = y;
-                for (int i = 0; i < rowWidths.length; i++) {
+                for (int i = 0; i < rows; i++) {
                     float w = rowWidths[i];
                     float h = rowHeights[i];
                     if (w > 0.5f && h > 0.5f) {
@@ -255,7 +258,10 @@ public class ModernArrayListElement extends HudElement {
                     blurY += h;
                 }
             }
-            drawSteppedRect(renderer, rightX, y, rowWidths, rowHeights,
+            // Передаём ровно rows элементов: хвост scratch-массивов хранит устаревшие
+            // значения прошлых кадров и рисовал тёмное поле на месте выключенного модуля.
+            drawSteppedRect(renderer, rightX, y,
+                    java.util.Arrays.copyOf(rowWidths, rows), java.util.Arrays.copyOf(rowHeights, rows),
                     ClickGui.getBackgroundColor((int) (200f * ClickGui.getHudAlpha() * globalAlpha)),
                     ROW_RADIUS, ROW_RADIUS * 0.75f);
         }

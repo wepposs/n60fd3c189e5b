@@ -137,7 +137,6 @@ public class Nametags extends Module {
             targetPlayers, targetMobs, targetAnimals, targetItems, targetSelf, hideNaked);
 
     public final BooleanSetting stackItems = new BooleanSetting("Стакать предметы", true);
-    public final BooleanSetting hideOnTab = new BooleanSetting("Скрывать при TAB", true);
 
     public final ModeSetting boxMode = new ModeSetting("Боксы", "Нет", "Нет", "Квадрат", "Углы", "3D");
     public final SliderSetting box2DThickness = new SliderSetting("Толщина 2D линий", 1.0, 0.3, 3.0, 0.05).hidden(() -> !(boxMode.is("Квадрат") || boxMode.is("Углы")));
@@ -155,7 +154,7 @@ public class Nametags extends Module {
 
     public Nametags() {
         addSettings(elementTags, elementHealth, elementHead, elementArmor, elementMainhand, elementOffhand, armorDurability, rememberBonusItems, handTagPos);
-        addSettings(targets, stackItems, hideOnTab);
+        addSettings(targets, stackItems);
         addSettings(boxMode, box2DThickness, box2DFill, box2DFillStrength, box2DHealth, box2DHealthWidth, box2DHealthOffset,
                 box3DFill, box3DFillStrength, box3DLineThickness, boxOutlineAlpha, boxColorMode, boxHue);
     }
@@ -246,15 +245,10 @@ public class Nametags extends Module {
         return Mathf.worldSpaceToScreenSpace(pos);
     }
 
-    private boolean isTabOpen() {
-        return hideOnTab.get() && mc.options != null && mc.options.keyPlayerList != null && mc.options.keyPlayerList.isDown();
-    }
-
     @EventInit
     public void onRender3D(EventRender3D event) {
         cachedTags.clear();
         if (!this.enable || mc.level == null || mc.player == null) return;
-        if (isTabOpen()) return;
 
         float tickDelta = event.getTickDelta();
         float scale = (float) Mathf.getScaleFactor();
@@ -273,6 +267,7 @@ public class Nametags extends Module {
 
         for (Entity entity : mc.level.entitiesForRendering()) {
             if (entity instanceof ArmorStand) continue;
+            if (entity.isRemoved() || (entity instanceof LivingEntity le && !le.isAlive())) continue;
             if (entity == mc.player && mc.options.getCameraType().isFirstPerson()) continue;
             if (entity == mc.player && !targetSelf.get()) continue;
             if (!matchesTarget(entity)) continue;
@@ -281,7 +276,8 @@ public class Nametags extends Module {
 
             if (entity instanceof ItemEntity itemEntity) {
                 if (!elementTags.get()) continue;
-                Vec3 head = new Vec3(lerped.x, lerped.y + 0.5 + HEAD_OFFSET, lerped.z);
+                // Тег прямо над дропом (хитбокс предмета 0.25): раньше +1 блок — вблизи тег висел в воздухе.
+                Vec3 head = new Vec3(lerped.x, lerped.y + itemEntity.getBbHeight() + 0.15, lerped.z);
                 Vec3 sp = project(head);
                 if (sp.z <= 0 || sp.z >= 1) continue;
                 ItemStack stack = itemEntity.getItem();

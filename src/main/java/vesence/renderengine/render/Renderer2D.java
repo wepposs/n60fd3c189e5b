@@ -2664,7 +2664,7 @@ public final class Renderer2D {
    }
 
    public static void setupOrientationMatrix(PoseStack matrix, double x, double y, double z) {
-      Camera camera = mc.getEntityRenderDispatcher().camera;
+      Camera camera = mc.gameRenderer.mainCamera();
       Vec3 renderPos = camera.position();
       matrix.translate(x - renderPos.x, y - renderPos.y, z - renderPos.z);
    }
@@ -2673,7 +2673,7 @@ public final class Renderer2D {
    private static boolean getFovMethodResolved = false;
 
    public static Vector2d project2D(double x, double y, double z) {
-      Camera camera = mc.getEntityRenderDispatcher().camera;
+      Camera camera = mc.gameRenderer.mainCamera();
       if (camera == null) {
          return new Vector2d(0.0, 0.0);
       } else {

@@ -309,9 +309,22 @@ public class MainScreen extends Screen {
         try {
             Minecraft mc = Minecraft.getInstance();
             for (Identifier id : LOGO_IDS) mc.getTextureManager().getTexture(id);
+            for (Identifier id : WASH_IDS) mc.getTextureManager().getTexture(id);
         } catch (Throwable t) {
             System.err.println("[weppos] logo preload failed: " + t);
         }
+    }
+
+    private static final Identifier[] WASH_IDS = new Identifier[LOGO_FRAMES];
+    static {
+        for (int i = 0; i < LOGO_FRAMES; i++) {
+            WASH_IDS[i] = Identifier.fromNamespaceAndPath("vesence", String.format("videos/logo_wash/f%04d.png", i));
+        }
+    }
+
+    static Identifier washFrame() {
+        long idx = (long) (System.nanoTime() / 1_000_000_000.0 * LOGO_FPS);
+        return WASH_IDS[(int) (idx % LOGO_FRAMES)];
     }
 
     static Identifier logoFrame() {
@@ -323,11 +336,12 @@ public class MainScreen extends Screen {
         r.rect(0, 0, sw, sh, ColorUtil.getColor(0, 0, 0, 255));
         {
             float size = Math.max(sw, sh) * 0.85f;
-            r.drawImage(logoFrame(), (sw - size) / 2f, (sh - size) / 2f - sh * 0.04f, size, size,
+            // Кадры заранее размыты (videos/logo_wash, поле 64px вокруг 320px логотипа):
+            // runtime-blur на весь экран (2 прохода x 128 выборок) клал fps меню.
+            float ws = size * (448f / 320f);
+            float cy = (sh - size) / 2f - sh * 0.04f + size / 2f;
+            r.drawImage(washFrame(), sw / 2f - ws / 2f, cy - ws / 2f, ws, ws,
                     ColorUtil.getColor(255, 255, 255, 190), false, 0f);
-            float radius = Math.max(40f, sh * 0.05f);
-            r.blur(0, 0, sw, sh, radius, 0f, 1f);
-            r.blur(0, 0, sw, sh, radius, 0f, 1f);
         }
         int edge = ColorUtil.getColor(0, 0, 0, 185);
         int clear = ColorUtil.getColor(0, 0, 0, 0);

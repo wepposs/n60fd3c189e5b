@@ -20,9 +20,6 @@ public final class OverlayModule {
     }
 
     public static void handleKey(int key) {
-        if (key == InputConstants.KEY_B) WINDOWS.toggleBrowser();
-        else if (key == InputConstants.KEY_T) WINDOWS.toggleTelegram();
-        else if (key == InputConstants.KEY_G) WINDOWS.toggleDiscord();
     }
 
 }

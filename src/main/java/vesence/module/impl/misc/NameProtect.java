@@ -51,6 +51,14 @@ import vesence.utils.other.ReplaceUtils;
 )
 @Environment(EnvType.CLIENT)
 public class NameProtect extends Module {
+    private static final java.util.regex.Pattern P_0 = java.util.regex.Pattern.compile("Анархия-\\d+");
+    private static final java.util.regex.Pattern P_1 = java.util.regex.Pattern.compile("ГРИФ #\\d+");
+    private static final java.util.regex.Pattern P_2 = java.util.regex.Pattern.compile("(?i)funtime\\.su");
+    private static final java.util.regex.Pattern P_3 = java.util.regex.Pattern.compile("(?i)spookytime\\.net");
+    private static final java.util.regex.Pattern P_4 = java.util.regex.Pattern.compile("(?i)&#[0-9a-f]{6}");
+    private static final java.util.regex.Pattern P_5 = java.util.regex.Pattern.compile("[<{][0-9a-fA-F]{6}[>}]");
+    private static final java.util.regex.Pattern P_6 = java.util.regex.Pattern.compile("(?i)[\u00A7&$][0-9a-fk-orx]");
+
 
     private static NameProtect instance;
 
@@ -293,10 +301,10 @@ public class NameProtect extends Module {
         if (text == null) return null;
         String out = text;
         if (this.grief.get()) {
-            out = out.replaceAll("Анархия-\\d+", BRAND);
-            out = out.replaceAll("ГРИФ #\\d+", BRAND);
-            out = out.replaceAll("(?i)funtime\\.su", BRAND);
-            out = out.replaceAll("(?i)spookytime\\.net", BRAND);
+            out = P_0.matcher(out).replaceAll(BRAND);
+            out = P_1.matcher(out).replaceAll(BRAND);
+            out = P_2.matcher(out).replaceAll(BRAND);
+            out = P_3.matcher(out).replaceAll(BRAND);
         }
         out = this.patchServerWords(out);
         return out;
@@ -325,9 +333,9 @@ public class NameProtect extends Module {
     /** Убирает legacy/hex цвет-коды из строки для нужд детекции сервер-слов. */
     private static String stripColorCodes(String s) {
         if (s == null) return "";
-        String out = s.replaceAll("(?i)&#[0-9a-f]{6}", "");
-        out = out.replaceAll("[<{][0-9a-fA-F]{6}[>}]", "");
-        out = out.replaceAll("(?i)[\u00A7&$][0-9a-fk-orx]", "");
+        String out = P_4.matcher(s).replaceAll("");
+        out = P_5.matcher(out).replaceAll("");
+        out = P_6.matcher(out).replaceAll("");
         return out;
     }
 

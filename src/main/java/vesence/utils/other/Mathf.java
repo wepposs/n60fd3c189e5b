@@ -23,6 +23,7 @@ public final class Mathf implements IMinecraft {
    public static final Matrix4f lastProjMat = new Matrix4f();
    public static final Matrix4f lastModMat = new Matrix4f();
    public static final Matrix4f lastWorldSpaceMatrix = new Matrix4f();
+   public static volatile Vec3 lastCameraPos;
 
    public static float calculateXPosition(float x, float width) {
       return x - width / 2.0F;
@@ -42,14 +43,16 @@ public final class Mathf implements IMinecraft {
    }
 
    public static Vec3 worldSpaceToScreenSpace(Vec3 pos) {
-      Camera camera = mc.getEntityRenderDispatcher().camera;
+      // Камера, из которой собраны lastWorldSpaceMatrix/lastProjMat (mainCamera),
+      // а не entityRenderDispatcher.camera — тот может отставать на кадр и теги «плывут» при движении.
+      Vec3 camPos = lastCameraPos != null ? lastCameraPos : mc.gameRenderer.mainCamera().position();
       int displayHeight = mc.getWindow().getHeight();
-      int[] viewport = new int[4];
-      GL11.glGetIntegerv(2978, viewport);
+      // Вьюпорт фиксируем по размеру окна: GL-вьюпорт в момент HUD-пасса может быть другим.
+      int[] viewport = new int[]{0, 0, mc.getWindow().getWidth(), displayHeight};
       Vector3f target = new Vector3f();
-      double deltaX = pos.x - camera.position().x;
-      double deltaY = pos.y - camera.position().y;
-      double deltaZ = pos.z - camera.position().z;
+      double deltaX = pos.x - camPos.x;
+      double deltaY = pos.y - camPos.y;
+      double deltaZ = pos.z - camPos.z;
       // JOML Vector4f.mul(Matrix4fc) multiplies as a row vector. World view
       // matrices in Minecraft are column-vector transforms, so using it here
       // reversed camera rotation and projected entity labels into the sky.
@@ -57,7 +60,15 @@ public final class Mathf implements IMinecraft {
             new Vector3f((float)deltaX, (float)deltaY, (float)deltaZ));
       Matrix4f matrixProj = new Matrix4f(lastProjMat);
       Matrix4f matrixModel = new Matrix4f(lastModMat);
-      matrixProj.mul(matrixModel).project(viewCoordinates.x, viewCoordinates.y, viewCoordinates.z, viewport, target);
+      matrixProj.mul(matrixModel);
+      // Точка позади камеры: clip.w <= 0. Без этой проверки деление на отрицательный w
+      // отражало её на экран — теги объектов за спиной висели «в небе» перед игроком.
+      float clipW = matrixProj.m03() * viewCoordinates.x + matrixProj.m13() * viewCoordinates.y
+            + matrixProj.m23() * viewCoordinates.z + matrixProj.m33();
+      if (clipW <= 1.0E-4F) {
+         return new Vec3(Double.NaN, Double.NaN, -1.0);
+      }
+      matrixProj.project(viewCoordinates.x, viewCoordinates.y, viewCoordinates.z, viewport, target);
       return new Vec3(target.x / getScaleFactor(), (displayHeight - target.y) / getScaleFactor(), target.z);
    }
 

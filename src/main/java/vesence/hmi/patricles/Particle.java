@@ -193,7 +193,7 @@ public class Particle {
             if (!this.keyframes.isEmpty() && this.iterator.hasNext() && Minecraft.getInstance().player.tickCount % 4 == 0 && player.tickCount != this.prevAge) {
                 this.texture = this.iterator.next();
             }
-            if (this.lifecycleType == "SCALE") {
+            if ("SCALE".equals(this.lifecycleType)) {
                 if (!this.isBirth && this.particleLifetime == 0.0) {
                     this.scale -= 0.03 * (double)LuaTestHMI.deltaTime * 30.0;
                     if (this.scale <= 0.0) {
@@ -206,7 +206,7 @@ public class Particle {
                         this.isBirth = false;
                     }
                 }
-            } else if (this.lifecycleType == "OPACITY") {
+            } else if ("OPACITY".equals(this.lifecycleType)) {
                 if (!this.isBirth && this.particleLifetime == 0.0) {
                     this.alpha -= (double)(10.0f * LuaTestHMI.deltaTime * 30.0f);
                     if (this.alpha <= 0.0) {
@@ -218,14 +218,14 @@ public class Particle {
                     this.isBirth = false;
                     this.alpha = 255.0;
                 }
-            } else if (this.lifecycleType == "SPAWN") {
+            } else if ("SPAWN".equals(this.lifecycleType)) {
                 if (!this.isBirth && this.particleLifetime == 0.0) {
                     this.dead = true;
                 } else {
                     this.scale = this.maxScale;
                     this.isBirth = false;
                 }
-            } else if (this.lifecycleType == "KEYFRAME") {
+            } else if ("KEYFRAME".equals(this.lifecycleType)) {
                 if (!this.isBirth && !this.iterator.hasNext()) {
                     this.dead = true;
                 } else {
@@ -251,11 +251,11 @@ public class Particle {
 
         // Выбор слоя соответствует оригиналу HMI, адаптировано под фабрики 1.21.11.
         RenderType layer;
-        if (this.particleRenderType == "ADDITIVE") {
+        if ("ADDITIVE".equals(this.particleRenderType)) {
             layer = ParticleRenderLayers.getAdditiveRenderLayer(this.texture);
-        } else if (this.particleRenderType == "TRANSLUCENT") {
+        } else if ("TRANSLUCENT".equals(this.particleRenderType)) {
             layer = ParticleRenderLayers.getSolidRenderLayer(this.texture);
-        } else if (this.particleRenderType == "CUTOUT_L") {
+        } else if ("CUTOUT_L".equals(this.particleRenderType)) {
             // 26.3: RenderTypes.entitySmoothCutout удалён, ближайший аналог — entityCutout.
             layer = RenderTypes.entityCutout(this.texture);
         } else { // TRANSLUCENT_L и значение по умолчанию
@@ -275,7 +275,7 @@ public class Particle {
         matrix.rotate((Quaternionfc)new Quaternionf().rotateZ((float)(this.rz * 0.01745329238474369)));
         Matrix3f normalMatrix = matrices.last().normal();
         int renderLight = light;
-        if (this.particleRenderType == "CUTOUT_L") {
+        if ("CUTOUT_L".equals(this.particleRenderType)) {
             renderLight = LightCoordsUtil.pack(15, 15);
         }
         double size = 0.5;

@@ -24,6 +24,9 @@ import java.util.regex.Pattern;
 @IModule(name = "ScoreboardHealth", description = "Берёт здоровье из scoreboard вместо реального", category = Category.MISC, bind = -1)
 @Environment(EnvType.CLIENT)
 public class ScoreboardHealth extends Module {
+   private static final Pattern HEART_PATTERN = Pattern.compile("([0-9]+(?:\\.[0-9]+)?)\\s*❤");
+   private static final Pattern NUMBER_PATTERN = Pattern.compile("([0-9]+(?:\\.[0-9]+)?)");
+
 
     private static ScoreboardHealth instance;
 
@@ -57,7 +60,7 @@ public class ScoreboardHealth extends Module {
                 for (ArmorStand armorStand : armorStands) {
                     if (armorStand.hasCustomName()) {
                         String name = armorStand.getCustomName().getString();
-                        Pattern pattern = Pattern.compile("([0-9]+(?:\\.[0-9]+)?)\\s*❤");
+                        Pattern pattern = HEART_PATTERN;
                         Matcher matcher = pattern.matcher(name);
                         if (matcher.find()) {
                             try {
@@ -65,7 +68,7 @@ public class ScoreboardHealth extends Module {
                             } catch (NumberFormatException ignored) {}
                         }
 
-                        pattern = Pattern.compile("([0-9]+(?:\\.[0-9]+)?)");
+                        pattern = NUMBER_PATTERN;
                         matcher = pattern.matcher(name);
                         if (matcher.find()) {
                             try {

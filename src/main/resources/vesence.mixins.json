@@ -99,8 +99,6 @@
     "FrameNoRenderMixin",
     "ItemModelManagerSphereHeadMixin",
     "FireworkRocketEntityMixin",
-    "FrameSyncGameRendererMixin",
-    "FrameSyncHudMixin",
     "BaritoneAimProcessorMixin",
     "BaritoneInputOverrideMixin",
     "BoatFlyMixin"

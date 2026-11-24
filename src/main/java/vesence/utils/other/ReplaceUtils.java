@@ -17,6 +17,8 @@ import net.minecraft.network.chat.ComponentContents;
  */
 @Environment(EnvType.CLIENT)
 public class ReplaceUtils {
+    private static final java.util.Map<String, Pattern> PATTERNS = new java.util.concurrent.ConcurrentHashMap<>();
+
 
     public static Component replace(Component input, String target, String replacement) {
         if (input != null && target != null && replacement != null) {
@@ -32,7 +34,7 @@ public class ReplaceUtils {
         ComponentContents content = current.getContents();
         Style style = current.getStyle();
         if (content instanceof LiteralContents literal) {
-            Pattern pattern = Pattern.compile(Pattern.quote(target), Pattern.CASE_INSENSITIVE);
+            Pattern pattern = PATTERNS.computeIfAbsent(target, t -> Pattern.compile(Pattern.quote(t), Pattern.CASE_INSENSITIVE));
             String replaced = pattern.matcher(literal.text()).replaceAll(java.util.regex.Matcher.quoteReplacement(replacement));
             result.append(Component.literal(replaced).setStyle(style));
         }

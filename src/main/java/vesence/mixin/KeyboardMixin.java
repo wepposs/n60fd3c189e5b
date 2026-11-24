@@ -48,9 +48,6 @@ public class KeyboardMixin {
 
         if (mc.player != null && Vesence.get != null && Vesence.get.manager != null) {
             for (var module : Vesence.get.manager.getModules()) {
-                if (module instanceof vesence.module.impl.misc.Browser browser) browser.handleOpenKey(key);
-                if (module instanceof vesence.module.impl.misc.Telegram telegram) telegram.handleOpenKey(key);
-                if (module instanceof vesence.module.impl.misc.Discord discord) discord.handleOpenKey(key);
                 if (module.bind == -1) continue;
                 if (module.bind == key) {
                     module.toggle();

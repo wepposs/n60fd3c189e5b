@@ -27,7 +27,7 @@ public class ParticleManager {
         particleRenderType = particleRenderType.intern();
         lifecycleType = lifecycleType.intern();
         space = space.intern();
-        if (particles.stream().noneMatch(particle -> particle.lifecycleType == "KEYFRAME" && particle.hand == hand)) {
+        if (particles.stream().noneMatch(particle -> "KEYFRAME".equals(particle.lifecycleType) && particle.hand == hand)) {
             particles.add(new Particle(gravity, x, y, z, dx, dy, dz, rx, ry, rz, drx, dry, drz, maxScale, texture, keyframes, space, hand, lifecycleType, particleRenderType, particleLifetime, alpha, ticker));
         }
     }

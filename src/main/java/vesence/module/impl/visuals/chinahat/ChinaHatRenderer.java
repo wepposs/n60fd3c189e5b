@@ -23,7 +23,6 @@ import com.mojang.math.Axis;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import vesence.module.impl.visuals.ChinaHat;
-import vesence.utils.render.ColorUtil;
 import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
 import com.mojang.renderpearl.api.pipeline.ColorTargetState;
 import com.mojang.renderpearl.api.pipeline.DepthStencilState;
@@ -35,15 +34,13 @@ public final class ChinaHatRenderer {
     private static final float OFFSET_HELMET = 0.50F;
     private static final float ROT_Z_DEGREES = 180.0F;
     private static final float ROT_Y_DEGREES = 90.0F;
-    private static final float RIM_Y = -0.01F;
-    private static final float RIM_THICKNESS = 0.01F;
-    private static final float RIM_FLARE = 0.01F;
-    private static final float SEG_STEP = 0.034906585F;
+    private static final int SEGMENTS = 128;
+    private static final float FEATHER = 0.02F;
     private static final float CONE_APEX_HEIGHT = 0.3F;
-    private static final float FEATHER = 0.035F;
+    private static final float LIP_DEPTH = 0.025F;
 
     private static volatile RenderType coneLayer;
-    private static volatile RenderType rimLayer;
+    private static volatile RenderType fringeLayer;
 
     private final ChinaHat parent;
 
@@ -73,28 +70,67 @@ public final class ChinaHatRenderer {
             entry.translate(0.0F, -offset, 0.0F);
             entry.rotate(Axis.ZN.rotationDegrees(ROT_Z_DEGREES));
             entry.rotate(Axis.YP.rotationDegrees(ROT_Y_DEGREES));
+            triVertex = 0;
             drawCone(entry.pose(), consumer, theme, width);
         });
 
-        queue.submitCustomGeometry(matrices, rimLayer(), (entry, consumer) -> {
+        queue.submitCustomGeometry(matrices, fringeLayer(), (entry, consumer) -> {
             applyHead(entry, head);
             entry.translate(0.0F, -offset, 0.0F);
             entry.rotate(Axis.ZN.rotationDegrees(ROT_Z_DEGREES));
             entry.rotate(Axis.YP.rotationDegrees(ROT_Y_DEGREES));
-            drawRim(entry.pose(), consumer, theme, width);
+            triVertex = 0;
+            drawFringe(entry.pose(), consumer, theme, width);
         });
+
     }
 
-    /** Сплошной матовый конус: без прозрачности и градиента, лёгкая заливка светом сбоку. */
-    private static void drawCone(Matrix4f matrix, VertexConsumer consumer, int theme, float width) {
-        int apex = shade(theme, 1.08F);
-        for (int i = 0; i <= 180; i++) {
-            float angle = i * SEG_STEP;
-            float light = 0.86F + 0.14F * Mth.cos(angle - 0.8F);
-            float x = (float) (Mth.sin(angle) * width);
-            float z = (float) (Mth.cos(angle) * width);
-            consumer.addVertex(matrix, x, 0.0F, z).setColor(shade(theme, light));
-            consumer.addVertex(matrix, 0.0F, CONE_APEX_HEIGHT, 0.0F).setColor(apex);
+    /** Непрозрачный конус + небольшой бортик снизу, обычные треугольники (без strip — иначе батч склеивает шляпы разных игроков). */
+    private static void drawCone(Matrix4f m, VertexConsumer c, int theme, float width) {
+        int apex = shade(theme, 1.15F);
+        int lip = shade(theme, 0.6F);
+        int under = shade(theme, 0.45F);
+        float step = Mth.TWO_PI / SEGMENTS;
+        for (int i = 0; i < SEGMENTS; i++) {
+            float a0 = i * step, a1 = (i + 1) * step;
+            float x0 = Mth.sin(a0) * width, z0 = Mth.cos(a0) * width;
+            float x1 = Mth.sin(a1) * width, z1 = Mth.cos(a1) * width;
+            int c0 = shade(theme, 0.75F + 0.25F * Mth.cos(a0 - 0.8F));
+            int c1 = shade(theme, 0.75F + 0.25F * Mth.cos(a1 - 0.8F));
+            // верх конуса
+            v(c, m, x0, 0.0F, z0, c0);
+            v(c, m, x1, 0.0F, z1, c1);
+            v(c, m, 0.0F, CONE_APEX_HEIGHT, 0.0F, apex);
+            // бортик
+            v(c, m, x0, 0.0F, z0, lip);
+            v(c, m, x1, -LIP_DEPTH, z1, lip);
+            v(c, m, x1, 0.0F, z1, lip);
+            v(c, m, x0, 0.0F, z0, lip);
+            v(c, m, x0, -LIP_DEPTH, z0, lip);
+            v(c, m, x1, -LIP_DEPTH, z1, lip);
+            // низ (тёмная изнанка)
+            v(c, m, x0, -LIP_DEPTH, z0, under);
+            v(c, m, 0.0F, CONE_APEX_HEIGHT * 0.5F, 0.0F, under);
+            v(c, m, x1, -LIP_DEPTH, z1, under);
+        }
+    }
+
+    /** Полупрозрачная кайма по краю полей: сглаживает «лесенку» без MSAA. Глубину не пишет. */
+    private static void drawFringe(Matrix4f m, VertexConsumer c, int theme, float width) {
+        float step = Mth.TWO_PI / SEGMENTS;
+        float outer = width + FEATHER;
+        for (int i = 0; i < SEGMENTS; i++) {
+            float a0 = i * step, a1 = (i + 1) * step;
+            int s0 = shade(theme, 0.6F), clear = s0 & 0x00FFFFFF;
+            float sx0 = Mth.sin(a0), cz0 = Mth.cos(a0), sx1 = Mth.sin(a1), cz1 = Mth.cos(a1);
+            for (float y : new float[]{0.0F, -LIP_DEPTH}) {
+                v(c, m, sx0 * width, y, cz0 * width, s0);
+                v(c, m, sx1 * width, y, cz1 * width, s0);
+                v(c, m, sx1 * outer, y, cz1 * outer, clear);
+                v(c, m, sx0 * width, y, cz0 * width, s0);
+                v(c, m, sx1 * outer, y, cz1 * outer, clear);
+                v(c, m, sx0 * outer, y, cz0 * outer, clear);
+            }
         }
     }
 
@@ -106,50 +142,15 @@ public final class ChinaHatRenderer {
         return 0xFF000000 | (r << 16) | (g << 8) | bl;
     }
 
-    private static void drawRim(Matrix4f matrix, VertexConsumer consumer, int theme, float width) {
-        float yLow = RIM_Y;
-        float yHigh = RIM_Y + RIM_THICKNESS;
-        float outer = width + RIM_FLARE;
-        float inner = width - RIM_FLARE;
+    /** Сортируемый translucent-батч в 26.3 не принимает TRIANGLES (краш «Cannot sort draw with TRIANGLES»):
+     *  рисуем QUADS, каждый треугольник — вырожденный квад (третья вершина дублируется). */
+    private static int triVertex = 0;
 
-        float prevOuterX = (float) (Mth.sin(0.0F) * outer);
-        float prevOuterZ = (float) (Mth.cos(0.0F) * outer);
-        float prevInnerX = (float) (Mth.sin(0.0F) * inner);
-        float prevInnerZ = (float) (Mth.cos(0.0F) * inner);
-
-        for (int i = 1; i <= 181; i++) {
-            float angle = i * SEG_STEP;
-            int color = shade(theme, 0.8F); // ободок чуть темнее конуса, без прозрачности
-            float outerX = (float) (Mth.sin(angle) * outer);
-            float outerZ = (float) (Mth.cos(angle) * outer);
-            float innerX = (float) (Mth.sin(angle) * inner);
-            float innerZ = (float) (Mth.cos(angle) * inner);
-
-            consumer.addVertex(matrix, prevOuterX, yLow, prevOuterZ).setColor(color);
-            consumer.addVertex(matrix, prevOuterX, yHigh, prevOuterZ).setColor(color);
-            consumer.addVertex(matrix, outerX, yHigh, outerZ).setColor(color);
-            consumer.addVertex(matrix, outerX, yLow, outerZ).setColor(color);
-
-            consumer.addVertex(matrix, prevInnerX, yHigh, prevInnerZ).setColor(color);
-            consumer.addVertex(matrix, innerX, yHigh, innerZ).setColor(color);
-            consumer.addVertex(matrix, outerX, yHigh, outerZ).setColor(color);
-            consumer.addVertex(matrix, prevOuterX, yHigh, prevOuterZ).setColor(color);
-
-            // Мягкая кайма наружу (альфа -> 0): сглаживает зубчатый край без MSAA.
-            // Запись глубины у шляпы выключена, иначе прозрачная кайма прорезает дыры.
-            int clear = ColorUtil.replAlpha(color, 0);
-            float fo = outer + FEATHER;
-            float pfx = (float) (Mth.sin(angle - SEG_STEP) * fo), pfz = (float) (Mth.cos(angle - SEG_STEP) * fo);
-            float fx = (float) (Mth.sin(angle) * fo), fz = (float) (Mth.cos(angle) * fo);
-            consumer.addVertex(matrix, prevOuterX, yHigh, prevOuterZ).setColor(color);
-            consumer.addVertex(matrix, outerX, yHigh, outerZ).setColor(color);
-            consumer.addVertex(matrix, fx, yHigh, fz).setColor(clear);
-            consumer.addVertex(matrix, pfx, yHigh, pfz).setColor(clear);
-
-            prevOuterX = outerX;
-            prevOuterZ = outerZ;
-            prevInnerX = innerX;
-            prevInnerZ = innerZ;
+    private static void v(VertexConsumer c, Matrix4f m, float x, float y, float z, int color) {
+        c.addVertex(m, x, y, z).setColor(color);
+        if (++triVertex == 3) {
+            triVertex = 0;
+            c.addVertex(m, x, y, z).setColor(color);
         }
     }
 
@@ -179,8 +180,8 @@ public final class ChinaHatRenderer {
             synchronized (ChinaHatRenderer.class) {
                 local = coneLayer;
                 if (local == null) {
-                    local = RenderType.create("vesence_china_hat_cone",
-                            RenderSetup.builder(hatPipeline(PrimitiveTopology.TRIANGLE_STRIP, "china_hat_cone"))
+                    local = RenderType.create("vesence_china_hat_solid",
+                            RenderSetup.builder(hatPipeline(PrimitiveTopology.QUADS, "china_hat_solid", true))
                                     .createRenderSetup());
                     coneLayer = local;
                 }
@@ -189,31 +190,32 @@ public final class ChinaHatRenderer {
         return local;
     }
 
-    private static RenderType rimLayer() {
-        RenderType local = rimLayer;
+    private static RenderType fringeLayer() {
+        RenderType local = fringeLayer;
         if (local == null) {
             synchronized (ChinaHatRenderer.class) {
-                local = rimLayer;
+                local = fringeLayer;
                 if (local == null) {
-                    local = RenderType.create("vesence_china_hat_rim",
-                            RenderSetup.builder(hatPipeline(PrimitiveTopology.QUADS, "china_hat_rim"))
+                    local = RenderType.create("vesence_china_hat_fringe",
+                            RenderSetup.builder(hatPipeline(PrimitiveTopology.QUADS, "china_hat_fringe", false))
                                     .createRenderSetup());
-                    rimLayer = local;
+                    fringeLayer = local;
                 }
             }
         }
         return local;
     }
 
-    private static RenderPipeline hatPipeline(PrimitiveTopology mode, String path) {
+    private static RenderPipeline hatPipeline(PrimitiveTopology mode, String path, boolean depthWrite) {
         return RenderPipelines.register(
                 RenderPipeline.builder(new Snippet[]{RenderPipelines.MATRICES_FOG_SNIPPET})
                         .withLocation(Identifier.fromNamespaceAndPath("vesence", path))
                         .withVertexShader("core/position_color")
                         .withFragmentShader("core/position_color")
-                        .withVertexBinding(0, DefaultVertexFormat.POSITION_COLOR)                        .withPrimitiveTopology(mode)
+                        .withVertexBinding(0, DefaultVertexFormat.POSITION_COLOR)
+                        .withPrimitiveTopology(mode)
                         .withCull(false)
-                        .withDepthStencilState(new DepthStencilState(CompareOp.GREATER_THAN_OR_EQUAL, false))
+                        .withDepthStencilState(new DepthStencilState(CompareOp.GREATER_THAN_OR_EQUAL, depthWrite))
                         .withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
                         .build());
     }

@@ -73,9 +73,6 @@ public class ModuleManager {
       this.module.add(new vesence.module.impl.misc.PotionTracker());
       this.module.add(new vesence.module.impl.misc.AuctionHelper());
        this.module.add(new vesence.module.impl.misc.EventParser());
-       this.module.add(new Browser());
-       this.module.add(new Telegram());
-       this.module.add(new Discord());
 
       // =========================
       // COMBAT
@@ -177,7 +174,6 @@ public class ModuleManager {
       // =========================
 
       this.module.add(new vesence.module.impl.misc.BetterMinecraft());
-      this.module.add(new vesence.module.impl.misc.FrameSync());
       this.module.add(new vesence.module.impl.visuals.Cape());
       this.module.add(new vesence.module.impl.visuals.ChinaHat());
       this.module.add(new vesence.module.impl.visuals.particular.Particular());
@@ -360,17 +356,23 @@ public class ModuleManager {
          return clazz.cast(cached);
       }
 
-      return this.module.stream()
-              .filter(module -> module != null)
-              .filter(module -> clazz.isAssignableFrom(module.getClass()))
-              .map(clazz::cast)
-              .findFirst()
-              .orElse(null);
+      for (Module m : this.module) {
+         if (m != null && clazz.isAssignableFrom(m.getClass())) {
+            classCache.put(clazz, m);
+            return clazz.cast(m);
+         }
+      }
+      return null;
    }
 
    public Module getModule(Class<?> class1) {
       if (class1 == null) {
          return null;
+      }
+
+      Module hit = classCache.get(class1);
+      if (hit != null && hit.getClass() == class1) {
+         return hit;
       }
 
       for (Module module1 : this.module) {
