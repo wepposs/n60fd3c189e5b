@@ -71,7 +71,7 @@ public class ModernBossBarElement extends HudElement {
             }
         } catch (Exception ignored) {}
         if (preview) {
-            return new BossInfo("Вы играете с Vesence", 0.62f, 0);
+            return new BossInfo("Вы играете с weppos", 0.62f, 0);
         }
         return null;
     }

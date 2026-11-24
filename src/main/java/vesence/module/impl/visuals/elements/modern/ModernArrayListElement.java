@@ -22,8 +22,10 @@ import vesence.utils.render.text.FontRegistry;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * ArrayList: порт {@code ArrayListRenderer} из privatedlc (Excellent 1.16.5).
@@ -49,6 +51,15 @@ public class ModernArrayListElement extends HudElement {
 
     private final Map<String, Animation2> moduleAnims = new HashMap<>();
     private final Map<String, Animation2> slotAnims = new HashMap<>();
+    // Render-thread scratch collections reused on each HUD frame.
+    private final List<Module> moduleScratch = new ArrayList<>();
+    private final List<String> deadScratch = new ArrayList<>();
+    private final List<Module> visibleModuleScratch = new ArrayList<>();
+    private final List<Float> visibleAlphaScratch = new ArrayList<>();
+    private final List<Animation2> visibleSlotScratch = new ArrayList<>();
+    private final Set<String> activeNameScratch = new HashSet<>();
+    private float[] rowWidthsScratch = new float[16];
+    private float[] rowHeightsScratch = new float[16];
     private final Animation2 visibilityAnim = new Animation2();
     private final Animation2 widthAnim = new Animation2();
 
@@ -80,7 +91,8 @@ public class ModernArrayListElement extends HudElement {
 
     /** Включённые, видимые и прошедшие фильтр категорий модули, по убыванию ширины имени. */
     private List<Module> sortedEnabledModules(Renderer2D renderer, FontObject f) {
-        List<Module> list = new ArrayList<>();
+        List<Module> list = this.moduleScratch;
+        list.clear();
         for (Module mod : Vesence.get.manager.getModules()) {
             if (!mod.enable) continue;
             if (mod.hiddenFromGui) continue;
@@ -126,10 +138,13 @@ public class ModernArrayListElement extends HudElement {
             slot.run(LINE_HEIGHT, 0.15, Easings.CUBIC_OUT);
         }
 
-        List<String> dead = new ArrayList<>();
+        List<String> dead = this.deadScratch;
+        dead.clear();
+        this.activeNameScratch.clear();
+        for (Module mod : modules) this.activeNameScratch.add(mod.name);
         for (Map.Entry<String, Animation2> e : moduleAnims.entrySet()) {
             String key = e.getKey();
-            boolean stillActive = modules.stream().anyMatch(m -> m.name.equals(key));
+            boolean stillActive = this.activeNameScratch.contains(key);
             if (!stillActive) {
                 e.getValue().update();
                 e.getValue().run(0.0, 0.15, Easings.CUBIC_OUT);
@@ -182,9 +197,12 @@ public class ModernArrayListElement extends HudElement {
         // ---- Единая stepped-панель (слитая, без отдельных плашек) ----
         // Сначала собираем видимые строки (после анимаций), потом одной
         // панелью с per-corner скруглениями на переходах ширин.
-        List<Module> visibleMods = new ArrayList<>();
-        List<Float> visibleAlphas = new ArrayList<>();
-        List<Animation2> visibleSlots = new ArrayList<>();
+        List<Module> visibleMods = this.visibleModuleScratch;
+        List<Float> visibleAlphas = this.visibleAlphaScratch;
+        List<Animation2> visibleSlots = this.visibleSlotScratch;
+        visibleMods.clear();
+        visibleAlphas.clear();
+        visibleSlots.clear();
         for (Module mod : modules) {
             Animation2 anim = moduleAnims.get(mod.name);
             Animation2 slot = slotAnims.get(mod.name);
@@ -202,8 +220,14 @@ public class ModernArrayListElement extends HudElement {
         // ВЫСОТА строки панели = фактическая slot-высота (анимируется выездом) —
         // раньше была фикс. 25px при текст-шаге 29px, панель «уезжала» вверх
         // и нижние строки оставались без фона.
-        float[] rowWidths = new float[visibleMods.size()];
-        float[] rowHeights = new float[visibleMods.size()];
+        int rows = visibleMods.size();
+        if (this.rowWidthsScratch.length < rows) {
+            int capacity = Math.max(rows, this.rowWidthsScratch.length * 2);
+            this.rowWidthsScratch = new float[capacity];
+            this.rowHeightsScratch = new float[capacity];
+        }
+        float[] rowWidths = this.rowWidthsScratch;
+        float[] rowHeights = this.rowHeightsScratch;
         for (int i = 0; i < visibleMods.size(); i++) {
             float nameW = renderer.measureText(f, visibleMods.get(i).getDisplayName(), FONT_SIZE, -0.1f).width;
             float w = Math.max(70f, nameW + 34f) + PADDING_H + 6f;
@@ -264,7 +288,7 @@ public class ModernArrayListElement extends HudElement {
         // Уехавшие строки дорисовывают высоту.
         for (Map.Entry<String, Animation2> e : slotAnims.entrySet()) {
             String key = e.getKey();
-            boolean stillActive = modules.stream().anyMatch(m -> m.name.equals(key));
+            boolean stillActive = this.activeNameScratch.contains(key);
             if (!stillActive) {
                 float sh = (float) e.getValue().get();
                 if (sh > 0.5f) visibleSlotHeight += sh;
@@ -274,12 +298,12 @@ public class ModernArrayListElement extends HudElement {
         // Bounds = полная ширина панели (rightX - x), stepped-ступеньки
         // слева — часть дизайна; хитбокс и снапы работают по полной ширине.
         boundsW = rectW;
-        boundsH = Math.max(ROW_BOX_HEIGHT, totalRowsHeight(rowHeights));
+        boundsH = Math.max(ROW_BOX_HEIGHT, totalRowsHeight(rowHeights, rows));
     }
 
-    private static float totalRowsHeight(float[] heights) {
+    private static float totalRowsHeight(float[] heights, int count) {
         float h = 0f;
-        for (float v : heights) if (v > 0.5f) h += v;
+        for (int i = 0; i < count; i++) if (heights[i] > 0.5f) h += heights[i];
         return h;
     }
 

@@ -50,10 +50,14 @@ public final class Mathf implements IMinecraft {
       double deltaX = pos.x - camera.position().x;
       double deltaY = pos.y - camera.position().y;
       double deltaZ = pos.z - camera.position().z;
-      Vector4f transformedCoordinates = new Vector4f((float)deltaX, (float)deltaY, (float)deltaZ, 1.0F).mul(lastWorldSpaceMatrix);
+      // JOML Vector4f.mul(Matrix4fc) multiplies as a row vector. World view
+      // matrices in Minecraft are column-vector transforms, so using it here
+      // reversed camera rotation and projected entity labels into the sky.
+      Vector3f viewCoordinates = lastWorldSpaceMatrix.transformPosition(
+            new Vector3f((float)deltaX, (float)deltaY, (float)deltaZ));
       Matrix4f matrixProj = new Matrix4f(lastProjMat);
       Matrix4f matrixModel = new Matrix4f(lastModMat);
-      matrixProj.mul(matrixModel).project(transformedCoordinates.x(), transformedCoordinates.y(), transformedCoordinates.z(), viewport, target);
+      matrixProj.mul(matrixModel).project(viewCoordinates.x, viewCoordinates.y, viewCoordinates.z, viewport, target);
       return new Vec3(target.x / getScaleFactor(), (displayHeight - target.y) / getScaleFactor(), target.z);
    }
 

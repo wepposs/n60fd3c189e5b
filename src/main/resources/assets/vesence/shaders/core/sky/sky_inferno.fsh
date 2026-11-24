@@ -5,34 +5,30 @@
 
 layout(location = 0) out vec4 OutColor;
 
-// INFERNO — ад: огонь светит снизу, клубы копоти с раскалёнными ядрами,
-// пепельные колонны и два слоя угольков, летящих вверх. Всё дышит стробом.
+// INFERNO — ад: огонь светит снизу, клубы копоти с раскалёнными основаниями,
+// два слоя угольков, летящих вверх. Всё дышит.
 void main() {
     vec3 d = worldRay(gl_FragCoord.xy);
+    float breath = 0.86 + 0.14 * sin(Time * 1.1) + 0.06 * sin(Time * 2.7 + 1.3);
 
-    vec3 col = atmosphere(d,
-        vec3(0.62, 0.16, 0.05),
-        vec3(0.30, 0.05, 0.02),
-        vec3(0.08, 0.01, 0.01));
+    vec3 col = skyGradient(d, vec3(0.45, 0.10, 0.025), vec3(0.05, 0.014, 0.010), vec3(0.018, 0.008, 0.008));
+    float h = max(d.y, 0.0);
+    col += vec3(1.0, 0.32, 0.06) * exp(-h * 7.0) * 0.55 * breath;
+    col += vec3(1.0, 0.55, 0.12) * exp(-h * 9.0) * 0.5 * breath;
+    // Столбы огня у горизонта.
+    float az = atan(d.x, d.z);
+    float flames = pow(fbm(vec2(az * 6.0, Time * 0.35), 3), 2.5);
+    col += vec3(1.0, 0.45, 0.08) * flames * exp(-h * 6.0) * 1.1 * breath;
 
-    col += vec3(1.00, 0.35, 0.08) * exp(-max(d.y, 0.0) * 3.0) * 0.55;
+    vec3 haze = vec3(0.13, 0.035, 0.012);
+    Cloud soot = Cloud(0.55, 1.3, 1.4, 1.0, 3.0, 13.0, 0.020, 0.8, 0.1);
+    col = cloudVolume(col, d, soot, worldDir(10.0, 3.0), vec3(1.0, 0.32, 0.06) * 3.0 * breath,
+        vec3(0.030, 0.012, 0.010), vec3(0.50, 0.13, 0.025) * breath, haze, 0.0);
 
-    // Клубы дыма с раскалёнными ядрами.
-    vec3 p = d * 2.6 + vec3(Time * 0.010, Time * 0.022, Time * 0.006);
-    vec3 w = vec3(fbm(p * 1.3, 3) - 0.5) * 1.8;
-    float n = fbm(p + w, 5);
-    float smoke = smoothstep(0.42, 0.78, n);
-    float flick = 0.80 + 0.20 * sin(Time * 6.3 + n * 20.0);
-    col = mix(col, vec3(0.05, 0.02, 0.02), smoke * 0.85);
-    col += vec3(1.00, 0.42, 0.08) * pow(smoothstep(0.55, 0.90, n), 2.0) * flick * 1.10;
+    float embers = particleShell(d, 5.0, 0.8, 0.05, vec3(0.2, 1.1, 0.1), 3.0, 0.015)
+                 + particleShell(d, 10.0, 1.4, 0.055, vec3(0.2, 0.9, 0.1), 9.0, 0.0) * 0.8;
+    col += vec3(1.0, 0.45, 0.10) * embers * 2.2;
 
-    col += vec3(0.35, 0.10, 0.04) * ridged(p * 1.7 + vec3(0.0, Time * 0.05, 0.0), 4) * 0.35;
-
-    col += vec3(1.00, 0.55, 0.15) * driftParticles(d, 6.0, 0.90, 3.0, -0.10, 0.02);
-    col += vec3(1.00, 0.40, 0.10) * driftParticles(d, 15.0, 0.45, 41.0, -0.06, -0.013);
-
-    col += horizonHaze(d, worldDir(180.0, 4.0), vec3(1.00, 0.40, 0.10), 0.60);
-
-    col = grade(col, 1.30, -0.10);
-    OutColor = vec4(finishSky(col, d), 1.0);
+    col = grade(col, 1.15, 0.0);
+    OutColor = skyOutput(col, d);
 }

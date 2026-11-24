@@ -107,10 +107,10 @@ public class AccountSwitcherWindow {
     private long clearArmedTime = 0L;
     private float panelLeftX;
     private static final java.util.Random RNG = new java.util.Random();
-    private static final int ACCENT = ColorUtil.getColor(154, 255, 160, 255);
+    private static final int ACCENT = ColorUtil.getColor(255, 255, 255, 255);
     private float listX, listY, listW, listH;
 
-    private static int accent(int a) { return ColorUtil.getColor(154, 255, 160, a); }
+    private static int accent(int a) { return ColorUtil.getColor(255, 255, 255, a); }
 
     private static class AccountEntry {
         final String nick;

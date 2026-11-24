@@ -53,6 +53,10 @@ public final class Renderer2D {
    private float fontWeight = 0.0f;
    private final Deque<Float> fontWeightStack = new ArrayDeque<>();
    private final TransformStack transformStack = new TransformStack();
+   // Pipeline draw methods consume these arrays synchronously. Reuse scratch
+   // storage instead of allocating matrix/radius arrays for each HUD shape.
+   private final float[] pipelineMatrixScratch = new float[9];
+   private final float[] pipelineRadiiScratch = new float[4];
    private Map<String, Font> idToTextRenderer = new HashMap<>();
    private final ShapeBatcher batcher;
    private boolean frameBegun = false;
@@ -213,7 +217,20 @@ public final class Renderer2D {
    }
 
    private float[] toGlMatrix(float[] m) {
-      return new float[]{ m[0], m[3], m[6], m[1], m[4], m[7], m[2], m[5], m[8] };
+      float[] out = this.pipelineMatrixScratch;
+      out[0] = m[0]; out[1] = m[3]; out[2] = m[6];
+      out[3] = m[1]; out[4] = m[4]; out[5] = m[7];
+      out[6] = m[2]; out[7] = m[5]; out[8] = m[8];
+      return out;
+   }
+
+   private float[] pipelineRadii(BorderRadius radius, float scale) {
+      float[] out = this.pipelineRadiiScratch;
+      out[0] = radius.topLeftRadius() * scale;
+      out[1] = radius.bottomLeftRadius() * scale;
+      out[2] = radius.topRightRadius() * scale;
+      out[3] = radius.bottomRightRadius() * scale;
+      return out;
    }
 
    public void drawSquircle(float x, float y, float width, float height, float squirt, BorderRadius borderRadius, int color) {
@@ -229,14 +246,14 @@ public final class Renderer2D {
       this.beginPipelineClip();
       try {
          if (transformHasRotation(m)) {
-            squirclePipeline.draw(x, y, w, h, new float[]{borderRadius.topLeftRadius(), borderRadius.bottomLeftRadius(), borderRadius.topRightRadius(), borderRadius.bottomRightRadius()}, modulatedColor, 1.0f, squirt, toGlMatrix(m), this.frameWidth, this.frameHeight);
+            squirclePipeline.draw(x, y, w, h, pipelineRadii(borderRadius, 1.0f), modulatedColor, 1.0f, squirt, toGlMatrix(m), this.frameWidth, this.frameHeight);
             return;
          }
          float nx = m[0] * x + m[1] * y + m[2];
          float ny = m[3] * x + m[4] * y + m[5];
          float nw = m[0] * w;
          float nh = m[4] * h;
-         squirclePipeline.draw(nx, ny, nw, nh, new float[]{borderRadius.topLeftRadius() * m[0], borderRadius.bottomLeftRadius() * m[0], borderRadius.topRightRadius() * m[0], borderRadius.bottomRightRadius() * m[0]}, modulatedColor, 1.0f, squirt, IDENTITY, this.frameWidth, this.frameHeight);
+         squirclePipeline.draw(nx, ny, nw, nh, pipelineRadii(borderRadius, m[0]), modulatedColor, 1.0f, squirt, IDENTITY, this.frameWidth, this.frameHeight);
       } finally {
          this.endPipelineClip();
       }
@@ -251,14 +268,14 @@ public final class Renderer2D {
       this.beginPipelineClip();
       try {
          if (transformHasRotation(m)) {
-            squirclePipeline.drawOutline(x, y, width, height, new float[]{borderRadius.topLeftRadius(), borderRadius.bottomLeftRadius(), borderRadius.topRightRadius(), borderRadius.bottomRightRadius()}, modulatedColor, 1.0f, squirt, thickness, toGlMatrix(m), this.frameWidth, this.frameHeight);
+            squirclePipeline.drawOutline(x, y, width, height, pipelineRadii(borderRadius, 1.0f), modulatedColor, 1.0f, squirt, thickness, toGlMatrix(m), this.frameWidth, this.frameHeight);
             return;
          }
          float nx = m[0] * x + m[1] * y + m[2];
          float ny = m[3] * x + m[4] * y + m[5];
          float nw = m[0] * width;
          float nh = m[4] * height;
-         squirclePipeline.drawOutline(nx, ny, nw, nh, new float[]{borderRadius.topLeftRadius() * m[0], borderRadius.bottomLeftRadius() * m[0], borderRadius.topRightRadius() * m[0], borderRadius.bottomRightRadius() * m[0]}, modulatedColor, 1.0f, squirt, thickness, IDENTITY, this.frameWidth, this.frameHeight);
+         squirclePipeline.drawOutline(nx, ny, nw, nh, pipelineRadii(borderRadius, m[0]), modulatedColor, 1.0f, squirt, thickness, IDENTITY, this.frameWidth, this.frameHeight);
       } finally {
          this.endPipelineClip();
       }
@@ -273,14 +290,14 @@ public final class Renderer2D {
       this.beginPipelineClip();
       try {
          if (transformHasRotation(m)) {
-            squirclePipeline.drawShadow(x, y, width, height, new float[]{borderRadius.topLeftRadius(), borderRadius.bottomLeftRadius(), borderRadius.topRightRadius(), borderRadius.bottomRightRadius()}, modulatedColor, 1.0f, squirt, blurStrength, spread, toGlMatrix(m), this.frameWidth, this.frameHeight);
+            squirclePipeline.drawShadow(x, y, width, height, pipelineRadii(borderRadius, 1.0f), modulatedColor, 1.0f, squirt, blurStrength, spread, toGlMatrix(m), this.frameWidth, this.frameHeight);
             return;
          }
          float nx = m[0] * x + m[1] * y + m[2];
          float ny = m[3] * x + m[4] * y + m[5];
          float nw = m[0] * width;
          float nh = m[4] * height;
-         squirclePipeline.drawShadow(nx, ny, nw, nh, new float[]{borderRadius.topLeftRadius() * m[0], borderRadius.bottomLeftRadius() * m[0], borderRadius.topRightRadius() * m[0], borderRadius.bottomRightRadius() * m[0]}, modulatedColor, 1.0f, squirt, blurStrength, spread, IDENTITY, this.frameWidth, this.frameHeight);
+         squirclePipeline.drawShadow(nx, ny, nw, nh, pipelineRadii(borderRadius, m[0]), modulatedColor, 1.0f, squirt, blurStrength, spread, IDENTITY, this.frameWidth, this.frameHeight);
       } finally {
          this.endPipelineClip();
       }
@@ -298,14 +315,14 @@ public final class Renderer2D {
       this.beginPipelineClip();
       try {
          if (transformHasRotation(m)) {
-            squirclePipeline.drawGradient(x, y, width, height, new float[]{borderRadius.topLeftRadius(), borderRadius.bottomLeftRadius(), borderRadius.topRightRadius(), borderRadius.bottomRightRadius()}, nc00, nc10, nc11, nc01, 1.0f, squirt, toGlMatrix(m), this.frameWidth, this.frameHeight);
+            squirclePipeline.drawGradient(x, y, width, height, pipelineRadii(borderRadius, 1.0f), nc00, nc10, nc11, nc01, 1.0f, squirt, toGlMatrix(m), this.frameWidth, this.frameHeight);
             return;
          }
          float nx = m[0] * x + m[1] * y + m[2];
          float ny = m[3] * x + m[4] * y + m[5];
          float nw = m[0] * width;
          float nh = m[4] * height;
-         squirclePipeline.drawGradient(nx, ny, nw, nh, new float[]{borderRadius.topLeftRadius() * m[0], borderRadius.bottomLeftRadius() * m[0], borderRadius.topRightRadius() * m[0], borderRadius.bottomRightRadius() * m[0]}, nc00, nc10, nc11, nc01, 1.0f, squirt, IDENTITY, this.frameWidth, this.frameHeight);
+         squirclePipeline.drawGradient(nx, ny, nw, nh, pipelineRadii(borderRadius, m[0]), nc00, nc10, nc11, nc01, 1.0f, squirt, IDENTITY, this.frameWidth, this.frameHeight);
       } finally {
          this.endPipelineClip();
       }
@@ -323,14 +340,14 @@ public final class Renderer2D {
       this.beginPipelineClip();
       try {
          if (transformHasRotation(m)) {
-            squirclePipeline.drawGradientOutline(x, y, width, height, new float[]{borderRadius.topLeftRadius(), borderRadius.bottomLeftRadius(), borderRadius.topRightRadius(), borderRadius.bottomRightRadius()}, nc00, nc10, nc11, nc01, 1.0f, squirt, thickness, toGlMatrix(m), this.frameWidth, this.frameHeight);
+            squirclePipeline.drawGradientOutline(x, y, width, height, pipelineRadii(borderRadius, 1.0f), nc00, nc10, nc11, nc01, 1.0f, squirt, thickness, toGlMatrix(m), this.frameWidth, this.frameHeight);
             return;
          }
          float nx = m[0] * x + m[1] * y + m[2];
          float ny = m[3] * x + m[4] * y + m[5];
          float nw = m[0] * width;
          float nh = m[4] * height;
-         squirclePipeline.drawGradientOutline(nx, ny, nw, nh, new float[]{borderRadius.topLeftRadius() * m[0], borderRadius.bottomLeftRadius() * m[0], borderRadius.topRightRadius() * m[0], borderRadius.bottomRightRadius() * m[0]}, nc00, nc10, nc11, nc01, 1.0f, squirt, thickness, IDENTITY, this.frameWidth, this.frameHeight);
+         squirclePipeline.drawGradientOutline(nx, ny, nw, nh, pipelineRadii(borderRadius, m[0]), nc00, nc10, nc11, nc01, 1.0f, squirt, thickness, IDENTITY, this.frameWidth, this.frameHeight);
       } finally {
          this.endPipelineClip();
       }
@@ -476,8 +493,7 @@ public final class Renderer2D {
       float nh = m[4] * h;
 
       squircleTexturePipeline.draw(texture, nx, ny, nw, nh, u0, v0, u1, v1,
-              new float[]{borderRadius.topLeftRadius() * m[0], borderRadius.bottomLeftRadius() * m[0],
-                      borderRadius.topRightRadius() * m[0], borderRadius.bottomRightRadius() * m[0]},
+              pipelineRadii(borderRadius, m[0]),
               modulatedColor, 1.0f, cornerSmoothness, IDENTITY, this.frameWidth, this.frameHeight, nearest);
    }
 
@@ -781,11 +797,8 @@ public final class Renderer2D {
       }
       int modulatedColor = this.modulateColor(color);
       float[] m = this.transformStack.current();
-      float[] gl = new float[]{ m[0], m[3], m[6], m[1], m[4], m[7], m[2], m[5], m[8] };
-      float[] radii = new float[]{
-            borderRadius.topLeftRadius(), borderRadius.bottomLeftRadius(),
-            borderRadius.topRightRadius(), borderRadius.bottomRightRadius()
-      };
+      float[] gl = this.toGlMatrix(m);
+      float[] radii = this.pipelineRadii(borderRadius, 1.0f);
       this.blendModePipeline.drawBlend(x, y, w, h, radii, modulatedColor, squirt, mode.softId(), gl, this.frameWidth, this.frameHeight);
    }
 
@@ -1118,15 +1131,10 @@ public final class Renderer2D {
            float y,
            float w,
            float h,
+           float rounding,
            int color,
            float globalAlpha,
-           float refractZoom,
-           float distortionStrength,
-           float shapeRoundness,
-           float blurPixelStep,
-           float tintStrength,
-           float glowIntensity,
-           float glowSpeed) {
+           float distortionStrength) {
       this.ensureFrame();
       this.batcher.flush();
 
@@ -1139,16 +1147,13 @@ public final class Renderer2D {
          this.liquidGlassShader.use();
          this.setLiquidGlassMatrix("uMatrix", this.transformStack.current());
          this.setLiquidGlassUniform("uViewport", (float)this.frameWidth, (float)this.frameHeight);
-         this.setLiquidGlassUniform("iTime", (float)(System.currentTimeMillis() % 1000000L) / 1000.0F);
          this.setLiquidGlassUniform("Size", w, h);
          this.setLiquidGlassUniform("GlobalAlpha", modulatedGlobalAlpha);
-         this.setLiquidGlassUniform("GlassRefractZoom", refractZoom);
          this.setLiquidGlassUniform("GlassDistortionStrength", distortionStrength);
-         this.setLiquidGlassUniform("GlassRoundness", shapeRoundness);
-         this.setLiquidGlassUniform("GlassBlurPixelStep", blurPixelStep);
-         this.setLiquidGlassUniform("GlassTintStrength", tintStrength);
-         this.setLiquidGlassUniform("GlassGlowIntensity", glowIntensity);
-         this.setLiquidGlassUniform("GlassGlowSpeed", glowSpeed);
+         this.setLiquidGlassUniform("CornerSmoothness", 2.0F);
+         // Радиусы углов: скругление одинаковое со всех сторон, ограничено половиной стороны.
+         float radius = Math.min(rounding, Math.min(w, h) * 0.5F);
+         this.setLiquidGlassUniform("Radius", radius, radius, radius, radius);
          GL13.glActiveTexture(GL13.GL_TEXTURE0);
          GL11.glBindTexture(GL11.GL_TEXTURE_2D, getMcFramebufferTex());
          int samplerLoc = this.liquidGlassShader.getUniformLocation("Sampler0");
@@ -1619,25 +1624,16 @@ public final class Renderer2D {
       float alpha = ((color >> 24) & 0xFF) / 255f;
       float safeStrength = clamp01(distortionStrength);
       float globalAlpha = alpha * 0.9f;
-      float refractZoom = 0.985f;
-      float shapeRoundness = computeLiquidGlassRoundness(rounding, w, h);
-      float glowIntensity = 2.15f;
-      float glowSpeed = 2.2f;
 
       this.drawLiquidGlassInternal(
               x,
               y,
               w,
               h,
+              rounding,
               color,
               globalAlpha,
-              refractZoom,
-              safeStrength,
-              shapeRoundness,
-              1.5F,
-              0,
-              glowIntensity,
-              glowSpeed);
+              safeStrength);
    }
 
    private static float computeLiquidGlassRoundness(float rounding, float w, float h) {
@@ -2108,6 +2104,12 @@ public final class Renderer2D {
       this.transformStack.pop();
    }
 
+   /** Наклон по X (курсив). */
+   public void pushShear(float kx) {
+      this.ensureFrame();
+      this.transformStack.pushShear(kx);
+   }
+
    public void pushScale(float scale) {
       this.pushScale(scale, scale);
    }
@@ -2290,7 +2292,7 @@ public final class Renderer2D {
       final float[] m = this.transformStack.current();
       final float fw = this.frameWidth;
       final float fh = this.frameHeight;
-      final float[] gl = new float[]{ m[0], m[3], m[6], m[1], m[4], m[7], m[2], m[5], m[8] };
+      final float[] gl = this.toGlMatrix(m);
 
       tr.forEachGlyphQuad(x, y, size / 2.0F, s, alignKey, letterSpacing, (gx, gy, gw, gh, u0, v0, u1, v1) ->
             this.textBlurPipeline.drawGlyph(atlas, pxRange, atlasW, atlasH, gx, gy, gw, gh, u0, v0, u1, v1,
@@ -2329,7 +2331,7 @@ public final class Renderer2D {
       final float[] m = this.transformStack.current();
       final float fw = this.frameWidth;
       final float fh = this.frameHeight;
-      final float[] gl = new float[]{ m[0], m[3], m[6], m[1], m[4], m[7], m[2], m[5], m[8] };
+      final float[] gl = this.toGlMatrix(m);
 
       float measured = this.measureText(fo, s, size).width;
       final float textW = measured <= 0 ? 1f : measured;

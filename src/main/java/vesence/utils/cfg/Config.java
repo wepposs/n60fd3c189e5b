@@ -115,10 +115,18 @@ public final class Config implements ConfigUpdater {
             }
 
             if (modulesObject.has(module.name)) {
-               module.load(modulesObject.getAsJsonObject(module.name));
+               com.google.gson.JsonObject moduleObject = modulesObject.getAsJsonObject(module.name);
+               module.load(moduleObject);
                if (module.enable) {
                   enabledCount++;
                   System.out.println("[Config] Module enabled: " + module.name);
+               } else if (module.defaultEnabled && !moduleObject.has("enable")) {
+                  // Старый конфиг: запись есть, но поля enable нет (раньше выключенные
+                  // модули сохранялись без него). Явного выключения пользователь не
+                  // делал — включаем defaultEnabled-модуль.
+                  module.setState(true);
+                  enabledCount++;
+                  System.out.println("[Config] Module enabled by default: " + module.name);
                }
             } else if (module.defaultEnabled) {
                module.setState(true);

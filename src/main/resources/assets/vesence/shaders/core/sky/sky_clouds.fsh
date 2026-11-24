@@ -5,35 +5,27 @@
 
 layout(location = 0) out vec4 OutColor;
 
-// CLOUDS — небо про облака: плотный объёмный ярус с сильным контрастом
-// света и тени, над ним высокий полупрозрачный ярус для параллакса,
-// крепускулярные лучи сквозь разрывы и тёплая дымка у горизонта.
+// CLOUDS — небо про облака: плотный объёмный ярус с контрастом света и тени,
+// над ним высокий полупрозрачный ярус, лучи сквозь разрывы и тёплая дымка.
 void main() {
     vec3 d = worldRay(gl_FragCoord.xy);
-    vec3 sunPos = worldDir(55.0, 38.0);
+    vec3 sunDir = worldDir(140.0, 34.0);
+    vec3 T = sunTransmit(sunDir, 0.5);
 
-    vec3 col = atmosphereSun(d,
-        vec3(0.66, 0.77, 0.90),
-        vec3(0.22, 0.47, 0.80),
-        vec3(0.06, 0.22, 0.58),
-        sunPos, vec3(1.00, 0.95, 0.84), 0.60);
+    vec3 col = atmosphere(d, sunDir, 22.0, 1.0, 0.5, 1.0);
+    col += sunDisc(d, sunDir, 0.017, T);
+    vec3 haze = SkyPass > 1.5 ? vec3(0.0) : atmosphere(vec3(d.x, 0.03, d.z), sunDir, 22.0, 1.0, 0.5, 1.0) * 1.05;
 
-    col += sun(d, sunPos, 0.024, vec3(1.00, 0.97, 0.90));
+    Cloud hi = Cloud(0.40, 1.0, 0.6, 4.6, 5.6, 11.0, 0.006, 0.6, 0.9);
+    col = cloudVolume(col, d, hi, sunDir, T * 3.0, skyAmbient(sunDir) * 0.55, vec3(0.20, 0.22, 0.28) * 0.5, haze, 0.0);
 
-    // Дальний высокий ярус — медленный параллакс над основным.
-    col = cloudDeck(col, d, sunPos,
-        vec3(0.62, 0.69, 0.80), vec3(0.98, 0.98, 1.00),
-        0.30, 4.5, 0.35, 17.0);
+    Cloud lo = cloudCumulus(0.56, 5.0);
+    lo.top = 3.8;
+    lo.dens = 0.95;
+    float shafts = cloudShafts(d, sunDir, lo);
+    col = cloudVolume(col, d, lo, sunDir, T * 3.6, skyAmbient(sunDir) * 0.60, vec3(0.18, 0.20, 0.26) * 0.55, haze, 0.0);
+    col += T * pow(max(dot(d, sunDir), 0.0), 8.0) * shafts * 0.10;
 
-    // Герой: плотный объёмный ярус.
-    col = cloudVolume(col, d, sunPos, vec3(1.00, 0.96, 0.88),
-        vec3(0.42, 0.50, 0.64), vec3(1.00, 1.00, 0.99),
-        0.62, 0.050, 1.00, 9.0);
-
-    col += godRays(d, sunPos, vec3(1.00, 0.93, 0.76), 0.20);
-    col += vec3(1.00, 0.98, 0.95) * cirrus(d, 23.0) * 0.08;
-    col += horizonHaze(d, sunPos, vec3(0.86, 0.90, 0.95), 0.30);
-
-    col = grade(col, 1.15, -0.08);
-    OutColor = vec4(finishSky(col, d), 1.0);
+    col = grade(col, 1.06, 0.0);
+    OutColor = skyOutput(col, d);
 }

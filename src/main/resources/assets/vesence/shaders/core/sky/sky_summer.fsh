@@ -5,30 +5,24 @@
 
 layout(location = 0) out vec4 OutColor;
 
-// SUMMER — полдень: насыщенный синий купол, жёсткое солнце, объёмные кучевые
-// облака с тёплыми верхами и холодными основаниями, высокий рваный ярус для
-// параллакса и лёгкая перистая дымка.
+// SUMMER — полдень: настоящая атмосфера (Рэлей + Ми + озон), белое солнце,
+// объёмные кучевые облака с тёмными основаниями и светлыми шапками, высокая
+// перистая вуаль и лёгкая дымка у горизонта.
 void main() {
     vec3 d = worldRay(gl_FragCoord.xy);
-    vec3 sunPos = worldDir(30.0, 55.0);
+    vec3 sunDir = worldDir(30.0, 52.0);
+    vec3 T = sunTransmit(sunDir, 0.35);
 
-    vec3 col = atmosphereSun(d,
-        vec3(0.62, 0.75, 0.90),
-        vec3(0.16, 0.42, 0.80),
-        vec3(0.03, 0.15, 0.55),
-        sunPos, vec3(1.00, 0.96, 0.85), 0.40);
+    vec3 col = atmosphere(d, sunDir, 22.0, 1.0, 0.35, 1.0);
+    col += sunDisc(d, sunDir, 0.017, T);
 
-    col += sun(d, sunPos, 0.023, vec3(1.00, 0.97, 0.90));
-    col += godRays(d, sunPos, vec3(1.00, 0.94, 0.78), 0.10);
+    vec3 haze = SkyPass > 1.5 ? vec3(0.0) : atmosphere(vec3(d.x, 0.03, d.z), sunDir, 22.0, 1.0, 0.35, 1.0) * 1.05;
+    col = cirrusVeil(col, d, sunDir, vec3(1.0, 0.98, 0.95) * 0.85, vec3(0.55, 0.65, 0.85), 0.18, 8.0);
 
-    // Главный объёмный ярус кучевых.
-    col = cloudVolume(col, d, sunPos, vec3(1.00, 0.96, 0.86),
-        vec3(0.55, 0.63, 0.76), vec3(0.99, 0.99, 0.98),
-        0.30, 0.060, 0.90, 3.0);
+    Cloud cl = cloudCumulus(0.38, 3.0);
+    col = cloudVolume(col, d, cl, sunDir, T * 3.4,
+        skyAmbient(sunDir) * 0.62, vec3(0.20, 0.22, 0.26) * 0.55, haze, 0.0);
 
-    col += vec3(1.00, 0.99, 0.97) * cirrus(d, 8.0) * 0.03;
-    col += horizonHaze(d, sunPos, vec3(0.84, 0.89, 0.95), 0.22);
-
-    col = grade(col, 1.20, -0.05);
-    OutColor = vec4(finishSky(col, d), 1.0);
+    col = grade(col, 1.08, 0.0);
+    OutColor = skyOutput(col, d);
 }

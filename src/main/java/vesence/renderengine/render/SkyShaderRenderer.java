@@ -46,23 +46,15 @@ import java.util.Optional;
 public final class SkyShaderRenderer {
 
     public static final String[] SHADER_NAMES = {
-            "sky_cosmos", "sky_summer", "sky_clouds", "sky_sunset", "sky_aurora",
-            "sky_galaxy", "sky_dawn", "sky_storm", "sky_nebula", "sky_neon",
-            "sky_meteor", "sky_inferno", "sky_psychedelic", "sky_rainbow", "sky_moon",
-            "sky_eclipse", "sky_twilight", "sky_crystal", "sky_ocean", "sky_volcano",
-            "sky_winter", "sky_lava", "sky_prism", "sky_matrix", "sky_starfall",
-            "sky_pastel", "sky_glacier", "sky_plasma", "sky_sakura", "sky_void",
-            "sky_spectrum", "sky_bloodmoon", "sky_emerald"
+            "sky_summer", "sky_clouds", "sky_sunset", "sky_dawn", "sky_neon",
+            "sky_inferno", "sky_psychedelic", "sky_moon", "sky_eclipse", "sky_crystal",
+            "sky_volcano", "sky_glacier"
     };
 
     public static final String[] MODE_NAMES = {
-            "Космос", "Лето", "Облака", "Закат", "Сияние",
-            "Галактика", "Рассвет", "Гроза", "Туманность", "Неон",
-            "Метеоры", "Инферно", "Психоделика", "Радуга", "Луна",
-            "Затмение", "Сумерки", "Кристалл", "Океан", "Вулкан",
-            "Зима", "Лава", "Призма", "Матрица", "Звездопад",
-            "Пастель", "Ледник", "Плазма", "Сакура", "Бездна",
-            "Спектр", "Кровавая луна", "Изумруд"
+            "Лето", "Облака", "Закат", "Рассвет", "Неон",
+            "Инферно", "Психоделика", "Луна", "Затмение", "Кристалл",
+            "Вулкан", "Ледник"
     };
 
     private static final Identifier SKY_VSH = Identifier.fromNamespaceAndPath("vesence", "core/sky/sky_fullscreen");
@@ -82,6 +74,13 @@ public final class SkyShaderRenderer {
     private GpuBuffer dummyVertexBuffer;
     private ByteBuffer skyData;
     private boolean initialized = false;
+
+    // Облака считаются отдельным проходом в HDR-буфер уменьшенного размера,
+    // небо, солнце и атмосфера — в полном разрешении поверх него.
+    private GpuBuffer cloudUbo;
+    private com.mojang.renderpearl.api.textures.GpuTexture lowTex;
+    private com.mojang.renderpearl.api.textures.GpuTextureView lowView;
+    private int lowW, lowH;
     // Поколение пайплайнов: при перезагрузке ресурсов (F3+T) инкрементируется,
     // новые локации заставляют GPU скомпилировать шейдеры из свежих исходников.
     private int pipelineGeneration = 0;
@@ -105,16 +104,27 @@ public final class SkyShaderRenderer {
         MemoryUtil.memFree(dummy);
         this.skyUbo = RenderSystem.getDevice().createBuffer(
                 () -> "vesence:sky_ubo", GpuBuffer.USAGE_UNIFORM | GpuBuffer.USAGE_COPY_DST, SKY_UBO_SIZE);
+        this.cloudUbo = RenderSystem.getDevice().createBuffer(
+                () -> "vesence:sky_cloud_ubo", GpuBuffer.USAGE_UNIFORM | GpuBuffer.USAGE_COPY_DST, SKY_UBO_SIZE);
         initialized = true;
     }
 
     private RenderPipeline getSkyPipeline(String shaderName) {
-        if (skyPipelines.containsKey(shaderName)) return skyPipelines.get(shaderName);
+        return getSkyPipeline(shaderName, false);
+    }
+
+    /**
+     * @param hdr пайплайн для прохода облаков: цель в формате RGBA16F. Формат
+     *            цели обязан совпадать с форматом пайплайна, иначе проход падает.
+     */
+    private RenderPipeline getSkyPipeline(String shaderName, boolean hdr) {
+        String key = hdr ? shaderName + "#hdr" : shaderName;
+        if (skyPipelines.containsKey(key)) return skyPipelines.get(key);
         try {
             Identifier fsh = Identifier.fromNamespaceAndPath("vesence", "core/sky/" + shaderName);
             RenderPipeline p = RenderPipelines.register(
                     RenderPipeline.builder()
-                            .withLocation(Identifier.fromNamespaceAndPath("vesence", "pipeline/" + shaderName + "_g" + pipelineGeneration))
+                            .withLocation(Identifier.fromNamespaceAndPath("vesence", "pipeline/" + shaderName + (hdr ? "_hdr" : "") + "_g" + pipelineGeneration))
                             .withVertexShader(SKY_VSH)
                             .withFragmentShader(fsh)
                             .withPrimitiveTopology(PrimitiveTopology.TRIANGLES)
@@ -122,19 +132,52 @@ public final class SkyShaderRenderer {
                             .withBindGroupLayout(BindGroupLayouts.DYNAMIC_TRANSFORMS)
                             .withBindGroupLayout(BindGroupLayout.builder()
                                     .withUniform("SkyData", UniformType.UNIFORM_BUFFER)
+                                    .withUniform("CloudNoise", UniformType.COMBINED_IMAGE_SAMPLER)
+                                    .withUniform("CloudBuffer", UniformType.COMBINED_IMAGE_SAMPLER)
                                     .build())
                             .withDepthStencilState(Optional.empty())
-                            .withColorTargetState(new ColorTargetState(REPLACE_BLEND))
+                            .withColorTargetState(hdr
+                                    ? new ColorTargetState(Optional.empty(), com.mojang.renderpearl.api.GpuFormat.RGBA16_FLOAT, ColorTargetState.WRITE_ALL)
+                                    : new ColorTargetState(REPLACE_BLEND))
                             .withCull(false)
                             .build()
             );
-            skyPipelines.put(shaderName, p);
+            skyPipelines.put(key, p);
             return p;
         } catch (Exception e) {
             System.err.println("[weppos] Sky pipeline register failed (" + shaderName + "): " + e.getMessage());
-            skyPipelines.put(shaderName, null);
+            skyPipelines.put(key, null);
             return null;
         }
+    }
+
+    private void ensureLowTarget(int w, int h) {
+        if (lowTex != null && lowW == w && lowH == h) return;
+        closeLowTarget();
+        lowW = w;
+        lowH = h;
+        lowTex = RenderSystem.getDevice().createTexture(() -> "vesence:sky_lowres",
+                com.mojang.renderpearl.api.textures.GpuTexture.USAGE_RENDER_ATTACHMENT
+                        | com.mojang.renderpearl.api.textures.GpuTexture.USAGE_TEXTURE_BINDING
+                        | com.mojang.renderpearl.api.textures.GpuTexture.USAGE_COPY_DST,
+                com.mojang.renderpearl.api.GpuFormat.RGBA16_FLOAT, w, h, 1, 1);
+        lowView = RenderSystem.getDevice().createTextureView(lowTex);
+    }
+
+    private void closeLowTarget() {
+        if (lowView != null) { lowView.close(); lowView = null; }
+        if (lowTex != null) { lowTex.close(); lowTex = null; }
+    }
+
+    /** Доля разрешения кадра, в которой считается небо (настройка Ambience). */
+    private static float resolutionScale() {
+        try {
+            String m = vesence.module.impl.visuals.Ambience.skyResolution.currentMode;
+            if ("100%".equals(m)) return 1.0f;
+            if ("75%".equals(m)) return 0.75f;
+        } catch (Throwable ignored) {
+        }
+        return 0.5f;
     }
 
     /**
@@ -190,18 +233,42 @@ public final class SkyShaderRenderer {
         float fg = ((fogColorRgb >> 8) & 0xFF) / 255.0f;
         float fb = (fogColorRgb & 0xFF) / 255.0f;
 
-        skyData.clear();
-        skyData.putFloat(w).putFloat(h).putFloat(time).putFloat(intensity);
-        skyData.putFloat(camYaw).putFloat(camPitch).putFloat(fov).putFloat(0f);
-        skyData.putFloat(fr).putFloat(fg).putFloat(fb).putFloat(fogEnabled ? fogBlend : 0f);
-        skyData.flip();
+        float scale = resolutionScale();
+        boolean split = scale < 0.999f;
+        int rw = Math.max(1, Math.round(w * scale));
+        int rh = Math.max(1, Math.round(h * scale));
+        RenderPipeline cloudPipeline = split ? getSkyPipeline(modeToShaderName(mode), true) : null;
+        if (cloudPipeline == null) split = false;
+        if (split) ensureLowTarget(rw, rh);
 
+        // Текстуру шума создаём до открытия RenderPass: загрузка внутри прохода запрещена.
+        var cloudNoise = CloudNoiseTexture.view();
+        var linearRepeat = RenderSystem.getSamplerCache().getRepeat(com.mojang.renderpearl.api.textures.FilterMode.LINEAR);
+        var linearClamp = RenderSystem.getSamplerCache().getClampToEdge(com.mojang.renderpearl.api.textures.FilterMode.LINEAR);
         CommandEncoder encoder = RenderSystem.getDevice().createCommandEncoder();
-        encoder.writeToBuffer(skyUbo.slice(), skyData);
+        writeSkyUbo(encoder, skyUbo, w, h, time, intensity, camYaw, camPitch, fov, split ? 2f : 0f, fr, fg, fb, fogEnabled ? fogBlend : 0f);
+        if (split) {
+            writeSkyUbo(encoder, cloudUbo, rw, rh, time, intensity, camYaw, camPitch, fov, 1f, fr, fg, fb, 0f);
+        }
 
         GpuBufferSlice dyn = RenderSystem.getDynamicUniforms().writeTransform(
                 RenderSystem.getModelViewMatrixCopy(), COLOR_MODULATOR, MODEL_OFFSET, TEXTURE_MATRIX);
 
+        if (split) {
+            // Проход 1: только облака, в HDR-буфер уменьшенного размера.
+            try (RenderPass pass = encoder.createRenderPass(() -> "vesence:sky_clouds", lowView, Optional.empty())) {
+                pass.setPipeline(RenderSystem.getCompiledPipeline(cloudPipeline));
+                pass.setVertexBuffer(0, dummyVertexBuffer.slice());
+                RenderSystem.bindDefaultUniforms(pass);
+                pass.setUniform("DynamicTransforms", dyn);
+                pass.setUniform("SkyData", cloudUbo);
+                pass.setUniform("CloudNoise", cloudNoise, linearRepeat);
+                pass.setUniform("CloudBuffer", cloudNoise, linearRepeat); // не читается в этом проходе
+                pass.draw(6, 1, 0, 0);
+            }
+        }
+
+        // Проход 2 (или единственный): небо в полном разрешении.
         try (RenderPass pass = encoder.createRenderPass(() -> "vesence:sky_render",
                 mainFb.getColorTextureView(), Optional.empty())) {
             pass.setPipeline(RenderSystem.getCompiledPipeline(skyPipeline));
@@ -209,17 +276,33 @@ public final class SkyShaderRenderer {
             RenderSystem.bindDefaultUniforms(pass);
             pass.setUniform("DynamicTransforms", dyn);
             pass.setUniform("SkyData", skyUbo);
+            pass.setUniform("CloudNoise", cloudNoise, linearRepeat);
+            pass.setUniform("CloudBuffer", split ? lowView : cloudNoise, split ? linearClamp : linearRepeat);
             // RenderPearl: vertexCount, instanceCount, firstVertex, firstInstance.
             pass.draw(6, 1, 0, 0);
         }
         return true;
     }
 
+    private void writeSkyUbo(CommandEncoder encoder, GpuBuffer ubo, int w, int h, float time, float intensity,
+                             float yaw, float pitch, float fov, float passFlag,
+                             float fr, float fg, float fb, float fogBlend) {
+        skyData.clear();
+        skyData.putFloat(w).putFloat(h).putFloat(time).putFloat(intensity);
+        skyData.putFloat(yaw).putFloat(pitch).putFloat(fov).putFloat(passFlag);
+        skyData.putFloat(fr).putFloat(fg).putFloat(fb).putFloat(fogBlend);
+        skyData.flip();
+        encoder.writeToBuffer(ubo.slice(), skyData);
+    }
+
     public void close() {
         if (skyUbo != null) { skyUbo.close(); skyUbo = null; }
         if (dummyVertexBuffer != null) { dummyVertexBuffer.close(); dummyVertexBuffer = null; }
         if (skyData != null) { MemoryUtil.memFree(skyData); skyData = null; }
+        if (cloudUbo != null) { cloudUbo.close(); cloudUbo = null; }
+        closeLowTarget();
         skyPipelines.clear();
+        CloudNoiseTexture.close();
         initialized = false;
     }
 }

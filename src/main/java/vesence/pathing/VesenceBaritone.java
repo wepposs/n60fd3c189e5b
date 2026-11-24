@@ -1026,7 +1026,7 @@ public final class VesenceBaritone {
         this.executor.apply(event);
         if (!this.legsAnnounced) {
             this.legsAnnounced = true;
-            System.out.println("[vesence] ноги ведут маршрут: исполнитель пишет ввод через EventInput");
+            System.out.println("[weppos] ноги ведут маршрут: исполнитель пишет ввод через EventInput");
         }
     }
 

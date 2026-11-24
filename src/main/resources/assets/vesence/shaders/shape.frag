@@ -298,7 +298,10 @@ void main(){
             vec2(-0.5, 0.0), vec2(0.5, 0.0), vec2(0.0, -0.5), vec2(0.0, 0.5)
         );
         float acc = 0.0;
-        float radius = halfSize.x;
+        // Для контуров радиус приходит отдельно (vRadii.x), а полуразмер квада
+        // больше него на толщину — иначе кольцо рисовалось бы по краю квада и
+        // обрезалось сверху/снизу/слева/справа.
+        float radius = cornerRadii.x > 0.5 ? cornerRadii.x : halfSize.x;
         float sectorWidth = arcPct * TAU;
 
         float betterPx = max(px * 0.7, 0.5);

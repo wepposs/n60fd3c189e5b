@@ -238,7 +238,7 @@ public class PotionTracker extends Module {
       int themeEnd = ColorUtil.fade(90);
 
       MutableComponent text = Component.literal("");
-      text.append(this.gradientText("vesence", themeStart, themeEnd, true));
+      text.append(this.gradientText("weppos", themeStart, themeEnd, true));
       text.append(Component.literal(" ⇒ ").setStyle(this.grayStyle()));
       text.append(Component.literal(playerName).setStyle(Style.EMPTY.withColor(TextColor.fromRgb(PLAYER))));
       text.append(Component.literal(" получил ").setStyle(this.grayStyle()));

@@ -70,18 +70,18 @@ public class Ambience extends Module {
     public static BooleanSetting skyShader = new BooleanSetting("Шейдер для неба", false);
     public static BooleanSetting hideSunMoon = new BooleanSetting("Убирать солнце и луну", false);
     public static ModeSetting skyShaderMode = new ModeSetting("Тип шейдера неба",
-            "Космос",
-            "Космос", "Лето", "Облака", "Закат", "Сияние",
-            "Галактика", "Рассвет", "Гроза", "Туманность", "Неон",
-            "Метеоры", "Инферно", "Психоделика", "Радуга", "Луна",
-            "Затмение", "Сумерки", "Кристалл", "Океан", "Вулкан",
-            "Зима", "Лава", "Призма", "Матрица", "Звездопад",
-            "Пастель", "Ледник", "Плазма", "Сакура", "Бездна",
-            "Спектр", "Кровавая луна", "Изумруд")
+            "Лето",
+            "Лето", "Облака", "Закат", "Рассвет", "Неон",
+            "Инферно", "Психоделика", "Луна", "Затмение", "Кристалл",
+            "Вулкан", "Ледник")
             .hidden(() -> !skyShader.get());
     public static SliderSetting skySpeed = (SliderSetting) new SliderSetting("Скорость неба", 1.0F, 0.1F, 5.0F, 0.1F, false)
             .hidden(() -> !skyShader.get());
     public static SliderSetting skyIntensity = (SliderSetting) new SliderSetting("Яркость неба", 1.0F, 0.2F, 2.0F, 0.05F, false)
+            .hidden(() -> !skyShader.get());
+    // Небо считается в уменьшенном разрешении и растягивается на экран:
+    // 50% — примерно в 4 раза дешевле полного.
+    public static ModeSetting skyResolution = (ModeSetting) new ModeSetting("Разрешение неба", "50%", "50%", "75%", "100%")
             .hidden(() -> !skyShader.get());
     public static BooleanSetting changeSaturation = new BooleanSetting("Изменить насыщенность игры", false);
     public static SliderSetting saturationLevel = (SliderSetting) new SliderSetting("Уровень насыщенности", 1.0F, 0.0F, 2.0F, 0.05F, false).hidden(() -> !changeSaturation.get());
@@ -122,6 +122,7 @@ public class Ambience extends Module {
         list.add(skyShaderMode);
         list.add(skySpeed);
         list.add(skyIntensity);
+        list.add(skyResolution);
         list.add(changeSaturation);
         list.add(saturationLevel);
 

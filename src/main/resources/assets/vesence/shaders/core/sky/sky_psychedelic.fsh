@@ -5,46 +5,27 @@
 
 layout(location = 0) out vec4 OutColor;
 
-// PSYCHEDELIC — трип: двойной доменно-искороблённый спектральный пласт,
-// кружащие облака, чьи свет и тень сами циклятся по спектру со сдвигом фаз,
-// палитровые лучи, плывущий горизонт и проступающие в тонких местах звёзды.
+// PSYCHEDELIC — сумерки после извержения вулкана: стратосферный аэрозоль
+// окрашивает небо в густой фиолетовый и малиновый, перистые горят
+// красным, облака подсвечены розовым снизу.
 void main() {
     vec3 d = worldRay(gl_FragCoord.xy);
+    vec3 sunDir = worldDir(30.0, -2.0);
+    vec3 T = sunTransmit(worldDir(30.0, 1.5), 1.6);
 
-    vec3 col = atmosphere(d,
-        vec3(0.060, 0.030, 0.090),
-        vec3(0.030, 0.015, 0.055),
-        vec3(0.010, 0.005, 0.025));
+    vec3 col = atmosphere(d, sunDir, 26.0, 1.0, 2.4, 2.0);
+    float h = max(d.y, 0.0);
+    // Аэрозольный слой: пурпурное свечение на высоте 20-30 градусов.
+    float mu = max(dot(normalize(vec3(d.x, 0.0, d.z)), normalize(vec3(sunDir.x, 0.0, sunDir.z))), 0.0);
+    col += vec3(0.55, 0.18, 0.60) * bell(h - 0.35, 0.22) * (0.5 + 0.5 * mu) * 0.15;
+    col += stars(d, 0.6) * smoothstep(0.05, 0.01, luma(col));
 
-    // Скрытый свет, медленно кружащий по куполу.
-    vec3 hidden = worldDir(mod(Time * 6.0, 360.0), 30.0 + 15.0 * sin(Time * 0.11));
+    vec3 haze = SkyPass > 1.5 ? vec3(0.0) : atmosphere(vec3(d.x, 0.04, d.z), sunDir, 26.0, 1.0, 2.4, 2.0) * 1.2;
+    col = cirrusVeil(col, d, sunDir, vec3(1.0, 0.30, 0.25) * 1.4, vec3(0.20, 0.08, 0.22), 0.8, 4.0);
+    Cloud cl = cloudCumulus(0.36, 97.0);
+    col = cloudVolume(col, d, cl, worldDir(30.0, 1.0), T * 6.0 + vec3(0.30, 0.06, 0.12),
+        vec3(0.22, 0.10, 0.30), vec3(0.45, 0.14, 0.22), haze, 0.0);
 
-    // Двойной доменный варп: классическая психоделика, но объёмнее.
-    vec3 p = d * 2.2;
-    vec3 w1 = vec3(fbm(p * 1.2 + vec3(Time * 0.06), 4) - 0.5) * 2.4;
-    vec3 w2 = vec3(fbm(p * 2.1 + w1 + vec3(-Time * 0.09), 4) - 0.5) * 1.4;
-    float t = fbm(p + w1 + w2, 5);
-
-    col += spectral(t * 1.4 + Time * 0.030) * 0.42;
-    col += spectral(t * 2.6 - Time * 0.020) * pow(smoothstep(0.45, 0.80, t), 2.0) * 0.55;
-
-    // Тёмные вены между цветовыми массами.
-    col *= 1.0 - 0.45 * smoothstep(0.50, 0.62, fbm(p * 3.0 + w2, 3));
-
-    // Облака, чьи свет и тень циклятся по спектру со сдвигом фаз.
-    col = cloudDeck(col, d, hidden,
-        spectral(t * 0.5 + 0.33) * 0.35, spectral(t * 0.5) * 0.90,
-        0.30, 4.0, 0.55, 281.0);
-
-    col += godRays(d, hidden, spectral(Time * 0.05) , 0.16);
-
-    // Звёзды проступают в тонких местах пласта.
-    col += stars(d, 65.0, 0.45, 293.0) * (1.0 - smoothstep(0.40, 0.65, t));
-
-    // Плывущий горизонт: спектральный бассейн растворяет кромку.
-    float melt = fbm(vec3(d.xz * 3.0, Time * 0.05), 3);
-    col += spectral(melt + Time * 0.02) * exp(-abs(d.y) * 6.0) * (0.25 + 0.35 * melt);
-
-    col = grade(col, 1.30, 0.08);
-    OutColor = vec4(finishSky(col, d), 1.0);
+    col = grade(col, 1.10, 0.0);
+    OutColor = skyOutput(col, d);
 }

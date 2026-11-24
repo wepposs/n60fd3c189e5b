@@ -21,6 +21,6 @@ public class AccessibilityOnboardingScreenMixin {
 
         Minecraft mc = Minecraft.getInstance();
         ci.cancel();
-        mc.gui.setScreen(new MainScreen());
+        mc.gui.setScreen(vesence.ui.WelcomeScreen.createForLaunch());
     }
 }

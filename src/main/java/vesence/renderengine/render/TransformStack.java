@@ -65,6 +65,13 @@ public final class TransformStack {
       this.pushScale(scale, scale, originX, originY);
    }
 
+   /** Сдвиг по X пропорционально Y — наклон текста (курсив) вокруг начала координат. */
+   public void pushShear(float kx) {
+      float[] s = new float[]{1.0F, kx, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 1.0F};
+      float[] top = this.stack.peek();
+      this.stack.push(mul(top, s));
+   }
+
    public void replaceTop(float[] matrix) {
       if (matrix == null) {
          throw new IllegalArgumentException("matrix must not be null");

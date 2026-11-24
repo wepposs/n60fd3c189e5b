@@ -58,11 +58,11 @@ public class NameProtect extends Module {
     public static String fakeName = "";
 
     /** Бренд-строка клиента, которой заменяются серверные слова/грифер-домены. */
-    private static final String BRAND = "vesence";
+    private static final String BRAND = "weppos";
 
     // ─── Галочки ───────────────────────────────────────────────────────────────
     /** Подменное имя (ник), которым заменяется ваш реальный никнейм. */
-    public StringSetting name = new StringSetting("Ваше новое имя", "vesence");
+    public StringSetting name = new StringSetting("Ваше новое имя", "weppos");
     /** Скрывать также ники друзей. */
     public BooleanSetting hideFriends = new BooleanSetting("Скрывать друзей", false);
     /** Заменять грифер-названия ("Анархия-N", "ГРИФ #N", домены) на бренд. */

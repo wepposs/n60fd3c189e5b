@@ -142,7 +142,7 @@ public class Particles extends Module {
                    .withBindGroupLayout(BindGroupLayouts.SAMPLER0)
                    .withVertexBinding(0, DefaultVertexFormat.POSITION_TEX_COLOR)                   .withPrimitiveTopology(PrimitiveTopology.QUADS)
                    .withCull(false)
-                   .withDepthStencilState(new DepthStencilState(CompareOp.LESS_THAN_OR_EQUAL, false))
+                   .withDepthStencilState(new DepthStencilState(CompareOp.GREATER_THAN_OR_EQUAL, false))
                    .withColorTargetState(new ColorTargetState(BlendFunction.LIGHTNING))
                    .build());
    private static final Identifier BLOOM_TEXTURE = Identifier.fromNamespaceAndPath("vesence", "textures/world/dashbloom.png");
@@ -184,7 +184,6 @@ public class Particles extends Module {
    private float frameVegaSize;
    private ParticleType frameVegaType = ParticleType.VEGA_DOLLAR;
    private float framePartialTicks;
-   private final Matrix4f particleMatrix = new Matrix4f();
 
    /** Проверка «блок сплошной» без аллокации BlockPos (значение идентично PlayerUtil.isBlockSolid). */
    static boolean isSolidAt(double x, double y, double z) {
@@ -533,6 +532,16 @@ public class Particles extends Module {
       try {
          Matrix4f base = matrix.last().pose();
 
+         // Позиция и ориентация в этом кадре одинаковы для базового спрайта,
+         // bloom и soft-bloom. Строим матрицы один раз, а не повторно в каждом слое.
+         if (!particleBase.is("2")) {
+            this.prepareParticleMatrices(this.targetParticles, base, cameraPos);
+            this.prepareParticleMatrices(this.flameParticles, base, cameraPos);
+            this.prepareParticleMatrices(this.worldParticles, base, cameraPos);
+            this.prepareParticleMatrices(this.totemParticles, base, cameraPos);
+         }
+         this.prepareVegaMatrices(base, cameraPos);
+
          if (!particleBase.is("2")) {
             double friction = Math.pow(0.999, deltaTime * 60.0);
             // Физика + фейд — один проход.
@@ -609,11 +618,23 @@ public class Particles extends Module {
       }
    }
 
-   private Matrix4f buildParticleMatrix(Matrix4f base, Vec3 cameraPos, float x, float y, float z, int rotateDeg) {
-      return this.particleMatrix.set(base)
-              .translate((float) (x - cameraPos.x), (float) (y - cameraPos.y), (float) (z - cameraPos.z))
-              .rotate(this.frameCamRot)
-              .rotateZ((float) Math.toRadians(rotateDeg));
+   private void prepareParticleMatrices(List<Particle> particles, Matrix4f base, Vec3 cameraPos) {
+      for (Particle particle : particles) {
+         particle.renderMatrix.set(base)
+                 .translate((float) (particle.posX - cameraPos.x),
+                            (float) (particle.posY - cameraPos.y),
+                            (float) (particle.posZ - cameraPos.z))
+                 .rotate(this.frameCamRot)
+                 .rotateZ((float) Math.toRadians(particle.rotate));
+      }
+   }
+
+   private void prepareVegaMatrices(Matrix4f base, Vec3 cameraPos) {
+      for (VegaParticle particle : this.vegaParticles) {
+         if (particle != null && !particle.toRemove) {
+            this.buildVegaMatrix(particle, base, cameraPos, this.frameVegaSize);
+         }
+      }
    }
 
    private RenderType layerFor(ParticleType type) {
@@ -647,7 +668,7 @@ public class Particles extends Module {
          if (alpha <= 0) continue;
          int color = particle.color();
          float pos = particle.size;
-         Matrix4f m = this.buildParticleMatrix(base, cameraPos, (float) particle.posX, (float) particle.posY, (float) particle.posZ, particle.rotate());
+         Matrix4f m = particle.renderMatrix;
          VertexConsumer buffer = immediate.getBuffer(this.layerFor(particle.type()));
          this.drawTexturedQuad(buffer, m, -pos, -pos, pos * 2.0F, pos * 2.0F, color, alpha);
          if (particle.type == ParticleType.BLOOM) {
@@ -671,13 +692,13 @@ public class Particles extends Module {
             int lightAlpha = (int) (alpha * 0.22F * intensity);
             if (lightAlpha <= 0) continue;
             float lightPos = pos * radiusMul * 1.75F;
-            Matrix4f m = this.buildParticleMatrix(base, cameraPos, (float) particle.posX, (float) particle.posY, (float) particle.posZ, particle.rotate());
+            Matrix4f m = particle.renderMatrix;
             this.drawTexturedQuad(buffer, m, -lightPos, -lightPos, lightPos * 2.0F, lightPos * 2.0F, color, lightAlpha);
          } else {
             int bloomAlpha = (int) (alpha * 0.42F * intensity);
             if (bloomAlpha <= 0) continue;
             float bloomPos = pos * radiusMul;
-            Matrix4f m = this.buildParticleMatrix(base, cameraPos, (float) particle.posX, (float) particle.posY, (float) particle.posZ, particle.rotate());
+            Matrix4f m = particle.renderMatrix;
             this.drawTexturedQuad(buffer, m, -bloomPos, -bloomPos, bloomPos * 2.0F, bloomPos * 2.0F, color, bloomAlpha);
          }
       }
@@ -699,7 +720,7 @@ public class Particles extends Module {
       float ax = (float) part.posX;
       float ay = (float) part.posY + pSize * 0.5F;
       float az = (float) part.posZ;
-      Matrix4f m = this.particleMatrix.set(base)
+      Matrix4f m = part.renderMatrix.set(base)
               .translate((float) (ax - cameraPos.x), (float) (ay - cameraPos.y), (float) (az - cameraPos.z));
       if (part.lower) {
          float rotY = (float) Mathf.lerp(part.prevRotY, part.rotY, this.framePartialTicks);
@@ -730,7 +751,7 @@ public class Particles extends Module {
          int alpha = (int) (part.alphaPC * 255.0F);
          if (alpha > 5) {
             int color = this.vegaColor(part, i, colorize, totalCount);
-            Matrix4f m = this.buildVegaMatrix(part, base, cameraPos, pSize);
+            Matrix4f m = part.renderMatrix;
             this.drawTexturedQuad(buffer, m, 0.0F, 0.0F, 1.0F, 1.0F, color, alpha);
          }
          i += 1.0F;
@@ -754,7 +775,7 @@ public class Particles extends Module {
                int lightAlpha = (int) (alpha * 0.22F * intensity);
                if (lightAlpha > 0) {
                   int color = this.vegaColor(part, i, colorize, totalCount);
-                  Matrix4f m = this.buildVegaMatrix(part, base, cameraPos, pSize);
+                  Matrix4f m = part.renderMatrix;
                   float lightExt = radiusMul * 1.75F;
                   float x1 = 0.5F - lightExt;
                   float bw = 2.0F * lightExt;
@@ -764,7 +785,7 @@ public class Particles extends Module {
                int bloomAlpha = (int) (alpha * 0.42F * intensity);
                if (bloomAlpha > 0) {
                   int color = this.vegaColor(part, i, colorize, totalCount);
-                  Matrix4f m = this.buildVegaMatrix(part, base, cameraPos, pSize);
+                  Matrix4f m = part.renderMatrix;
                   float bloomExt = radiusMul;
                   float x1 = 0.5F - bloomExt;
                   float bw = 2.0F * bloomExt;
@@ -807,6 +828,7 @@ public class Particles extends Module {
       private final int rotate;
       private final int color;
       private final float size;
+      private final Matrix4f renderMatrix = new Matrix4f();
       private static final double BASE_VELOCITY = 0.05;
       private final double speedMultiplier;
       private final StopWatch time = new StopWatch();
@@ -933,6 +955,7 @@ public class Particles extends Module {
       public boolean toRemove = false;
       public float alphaPC = 0.0F;
       public double posX, posY, posZ;
+      private final Matrix4f renderMatrix = new Matrix4f();
 
       private float motionX;
       private float motionY;

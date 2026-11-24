@@ -177,25 +177,20 @@ public class WorldRenderer {
     public void close() {
         if (!this.closed) {
             this.closed = true;
-
-            try {
-                this.bufferAllocator.close();
-            } catch (RuntimeException var2) {
-                throw var2;
-            } catch (Exception var3) {
-                throw new IllegalStateException("Failed to release world renderer buffers.", var3);
-            }
+            // flush() отправляет кадр синхронно после выполнения LevelRenderer
+            // frame graph. Геометрия уже скопирована в GPU buffers, арену можно
+            // освобождать здесь, до очистки depth buffer в GameRenderer.
+            this.bufferAllocator.close();
         }
     }
 
     // 26.3: MultiBufferSource удалён. Это его замена: копим геометрию по RenderType,
     // а draw() отправляет её на GPU.
     //
-    // ВАЖНО про момент отправки: эти draw() вызываются из EventRender3D, то есть
-    // ВНУТРИ отрисовки мира, когда frame graph ещё кодируется. Создавать там свой
-    // RenderPass нельзя — это вешает кадр. Поэтому draw() лишь складывает работу в
-    // Vesence.deferOverlay(...), а реальная отправка происходит в пост-GUI проходе
-    // GameRenderer.render() (тот же безопасный момент, где рисуются HUD и MainScreen).
+    // Миксин публикует WorldRenderEvent из RETURN LevelRenderer.render(): к этому
+    // моменту frame.execute() уже завершён, но GameRenderer ещё не очистил depth
+    // buffer для GUI. В этот момент можно безопасно создать RenderPass, сохранив
+    // мировую глубину для корректной окклюзии.
     public static final class ImmediateBuffers {
         private final ByteBufferBuilder allocator;
         // LinkedHashMap: слои отправляются в порядке добавления. С HashMap
@@ -203,17 +198,16 @@ public class WorldRenderer {
         // (заливка→свечение→линии у TargetESP, лента→блум у маршрута) могла
         // смешиваться в произвольном порядке от запуска к запуску.
         private final Map<RenderType, BufferBuilder> buffers = new java.util.LinkedHashMap<>();
+        // Reuse this tiny per-submit list: immediate rendering can be invoked by
+        // many modules in a single frame, so allocating it on every flush creates
+        // avoidable short-lived garbage without changing draw order.
+        private final List<PreparedLayer> preparedLayers = new ArrayList<>();
 
         /**
          * Мировая проекция, снятая во время отрисовки мира.
          *
-         * <p>Отложенная отправка выполняется в пост-GUI проходе, где в
-         * {@code RenderSystem} уже лежит ГИ-ортопроекция экрана, а модельная
-         * матрица — от GUI. Шейдеры {@code MATRICES} берут {@code ProjMat} из
-         * текущего projection-буфера в момент draw, а {@code ModelViewMat} — из
-         * RenderSystem в момент {@code prepare()}. Без подмены мировых матриц
-         * геометрия модулей проецировалась экранными матрицами и улетала за
-         * экран даже с правильными координатами вершин.
+         * <p>Храним проекцию world render на случай, если промежуточный этап
+         * временно сменит активные матрицы перед отправкой.
          */
         private static com.mojang.renderpearl.api.buffers.GpuBufferSlice worldProjection;
         private static com.mojang.blaze3d.ProjectionType worldProjectionType;
@@ -256,16 +250,13 @@ public class WorldRenderer {
         }
 
         /**
-         * Ставит отправку накопленной геометрии в очередь пост-GUI прохода.
-         * Меши строятся позже, поэтому в буферы нельзя добавлять вершины между
-         * вызовом draw() и концом кадра.
+         * Собирает mesh и сразу отправляет его после завершённого world frame graph.
          */
         public void draw(com.mojang.blaze3d.pipeline.RenderTarget target) {
             if (this.buffers.isEmpty()) {
                 return;
             }
-            final com.mojang.blaze3d.pipeline.RenderTarget renderTarget = target;
-            vesence.Vesence.deferOverlay(() -> this.submitNow(renderTarget));
+            this.submitNow(target);
         }
 
         /**
@@ -281,27 +272,17 @@ public class WorldRenderer {
 
         /** То же, но с явным целевым таргетом. */
         public void drawAndReset(com.mojang.blaze3d.pipeline.RenderTarget target, Runnable afterSubmit) {
-            if (this.buffers.isEmpty()) {
+            try {
+                this.draw(target);
+            } finally {
                 if (afterSubmit != null) {
                     afterSubmit.run();
                 }
-                return;
             }
-            final com.mojang.blaze3d.pipeline.RenderTarget renderTarget = target;
-            vesence.Vesence.deferOverlay(() -> {
-                try {
-                    this.submitNow(renderTarget);
-                } finally {
-                    if (afterSubmit != null) {
-                        afterSubmit.run();
-                    }
-                }
-            });
         }
 
         /**
-         * Собственно отправка на GPU. Выполняется в пост-GUI проходе, когда кадровый
-         * граф уже не кодируется — создавать здесь RenderPass безопасно.
+         * Отправка на GPU после world frame graph и до очистки глубины для GUI.
          */
         private void submitNow(com.mojang.blaze3d.pipeline.RenderTarget target) {
             if (SUBMIT_DEBUG) {
@@ -350,7 +331,8 @@ public class WorldRenderer {
                 // команды на устройстве, а внутри уже открытого прохода это
                 // запрещено: движок отвечает ReportedException «Uploading texture»,
                 // и задача отрисовки падает целиком.
-                List<PreparedLayer> prepared = new ArrayList<>();
+                List<PreparedLayer> prepared = this.preparedLayers;
+                prepared.clear();
                 for (Map.Entry<RenderType, BufferBuilder> entry : this.buffers.entrySet()) {
                     RenderType layer = entry.getKey();
                     MeshData mesh = entry.getValue().build();
@@ -428,7 +410,7 @@ public class WorldRenderer {
                 }
 
                 try (com.mojang.renderpearl.api.commands.RenderPass pass = encoder.createRenderPass(
-                        () -> "vesence world",
+                        () -> "weppos world",
                         target.getColorTextureView(), java.util.Optional.empty(),
                         target.getDepthTextureView(), java.util.OptionalDouble.empty())) {
                     for (PreparedLayer entry : prepared) {
@@ -443,6 +425,7 @@ public class WorldRenderer {
                             entry.indexBuffer().close();
                         }
                     }
+                    prepared.clear();
                     this.buffers.clear();
                 }
             } finally {

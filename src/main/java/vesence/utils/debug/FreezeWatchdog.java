@@ -320,7 +320,7 @@ public final class FreezeWatchdog {
    private static void writeHeader() {
       StringBuilder sb = new StringBuilder(512);
       sb.append("================================================================\n");
-      sb.append(" Vesence FreezeWatchdog — журнал диагностики подвисаний\n");
+      sb.append(" weppos FreezeWatchdog — журнал диагностики подвисаний\n");
       sb.append("================================================================\n");
       sb.append("Старт сессии : ").append(TS.format(new Date())).append('\n');
       sb.append("Порог фриза  : ").append(freezeThresholdMs).append(" мс\n");

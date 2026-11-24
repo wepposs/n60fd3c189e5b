@@ -54,7 +54,7 @@ public final class LineGlyphsEngine {
          .withVertexBinding(0, DefaultVertexFormat.POSITION_COLOR)
          .withPrimitiveTopology(PrimitiveTopology.DEBUG_LINES)
          .withCull(false)
-         .withDepthStencilState(new DepthStencilState(CompareOp.LESS_THAN_OR_EQUAL, false))
+         .withDepthStencilState(new DepthStencilState(CompareOp.GREATER_THAN_OR_EQUAL, false))
          .withColorTargetState(new ColorTargetState(BlendFunction.ADDITIVE))
          .build()
    );
@@ -72,7 +72,7 @@ public final class LineGlyphsEngine {
          .withVertexBinding(0, DefaultVertexFormat.POSITION_TEX_COLOR)
          .withPrimitiveTopology(PrimitiveTopology.QUADS)
          .withCull(false)
-         .withDepthStencilState(new DepthStencilState(CompareOp.LESS_THAN_OR_EQUAL, false))
+         .withDepthStencilState(new DepthStencilState(CompareOp.GREATER_THAN_OR_EQUAL, false))
          .withColorTargetState(new ColorTargetState(BlendFunction.ADDITIVE))
          .build()
    );

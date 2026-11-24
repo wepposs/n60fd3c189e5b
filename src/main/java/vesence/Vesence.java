@@ -36,7 +36,7 @@ import vesence.utils.render.math.animation.anim2.Easing;
 public class Vesence implements ClientModInitializer {
     public static Vesence get;
     public ModuleManager manager;
-    public final String name = "vesence Recode";
+    public final String name = "weppos";
     public static Animation alpha = new Animation(Easing.EASE_OUT_SINE, 1500L);
     public static Animation2 animation = new Animation2();
     public static Animation2 alphaPC = new Animation2();

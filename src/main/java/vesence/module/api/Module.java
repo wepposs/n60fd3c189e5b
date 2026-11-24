@@ -138,9 +138,11 @@ public class Module extends Config {
 
    public JsonObject save() {
       JsonObject object = new JsonObject();
-      if (this.enable) {
-         object.addProperty("enable", this.enable);
-      }
+      // Пишем enable всегда, включая false. Раньше выключенный модуль сохранялся без
+      // этого поля, и при загрузке нельзя было отличить «пользователь выключил» от
+      // «модуль новый/старый конфиг» — из-за этого defaultEnabled-модули (например,
+      // Optimization) навсегда оставались выключенными.
+      object.addProperty("enable", this.enable);
 
       if (this.bind != 0) {
          object.addProperty("keyIndex", this.bind);
@@ -214,7 +216,12 @@ public class Module extends Config {
    public void load(JsonObject object) {
       if (object != null) {
          if (object.has("enable")) {
-            this.setState(object.get("enable").getAsBoolean());
+            // Не дёргаем onDisable/onEnable, если состояние не изменилось: иначе при
+            // загрузке конфига каждый выключенный модуль проигрывал бы звук выключения.
+            boolean savedEnable = object.get("enable").getAsBoolean();
+            if (savedEnable != this.enable) {
+               this.setState(savedEnable);
+            }
          }
 
          if (object.has("keyIndex")) {

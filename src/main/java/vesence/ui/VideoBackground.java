@@ -198,9 +198,11 @@ public final class VideoBackground {
     }
 
     private NativeImage decodeFrame(int fileIdx) {
-        String path = dir + "/" + String.format(Locale.ROOT, "f%04d.jpg", fileIdx);
+        String stem = dir + "/" + String.format(Locale.ROOT, "f%04d", fileIdx);
         byte[] bytes;
-        try (InputStream is = res(path)) {
+        InputStream frameStream = res(stem + ".png");
+        if (frameStream == null) frameStream = res(stem + ".jpg");
+        try (InputStream is = frameStream) {
             if (is == null) return null;
             bytes = is.readAllBytes();
         } catch (Throwable t) {

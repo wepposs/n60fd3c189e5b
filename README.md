@@ -1,4 +1,4 @@
-# Vesence
+# weppos
 
 Клиент-мод для Minecraft **26.3** (Fabric Loader, Fabric Loom).
 

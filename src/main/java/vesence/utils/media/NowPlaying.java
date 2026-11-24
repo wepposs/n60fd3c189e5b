@@ -50,6 +50,7 @@ public final class NowPlaying {
     private static final boolean SUPPORTED = System.getProperty("os.name", "")
             .toLowerCase(Locale.ROOT).contains("win");
     private static final long POLL_MS = 300L;
+    private static final long DRIFT_RESYNC_MS = 900L;
     private static final long RESTART_BACKOFF_MS = 20_000L;
 
     private static volatile Track track;
@@ -135,8 +136,11 @@ public final class NowPlaying {
                             && parsed.title().equals(lastTrack.title())
                             && parsed.artist().equals(lastTrack.artist())
                             && parsed.playing() && lastTrack.playing()) {
-                        boolean rewound = lastRawPositionMs >= 0L
-                                && parsed.positionMs() < lastRawPositionMs - 2500L;
+                        // Плеер отстаёт от нашей экстраполяции (буферизация, подвисание) —
+                        // не убегаем вперёд, берём реальную позицию.
+                        boolean rewound = (lastRawPositionMs >= 0L
+                                && parsed.positionMs() < lastRawPositionMs - 2500L)
+                                || parsed.positionMs() < lastTrack.interpolatedPositionMs() - DRIFT_RESYNC_MS;
                         if (rewound) {
                             lastTrack = parsed;
                         } else {
@@ -250,6 +254,11 @@ public final class NowPlaying {
               return [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($s))
             }
             $selectedApp = $null
+            $playAnchorKey = $null
+            $playAnchorPosition = 0.0
+            $playAnchorTime = [DateTimeOffset]::Now
+            $playAnchorUpdated = [DateTimeOffset]::MinValue
+            $previousStatus = $null
             while ($true) {
               $line = "0|||||||"
               try {
@@ -279,20 +288,41 @@ public final class NowPlaying {
                   $props = Await ($session.TryGetMediaPropertiesAsync()) $propsType
                   $tl = $session.GetTimelineProperties()
                   $status = $session.GetPlaybackInfo().PlaybackStatus.ToString()
-                  $pos = $tl.Position.TotalSeconds
-                  # Position относится к моменту LastUpdatedTime: проецируем на
-                  # «сейчас», иначе караоке отстаёт от реального воспроизведения.
-                  try {
-                    $stale = ([DateTimeOffset]::Now - $tl.LastUpdatedTime).TotalSeconds
-                    if ($stale -gt 0 -and $stale -lt 15) { $pos = $pos + $stale }
-                  } catch { }
+                  $rawPosition = $tl.Position.TotalSeconds
+                  $now = [DateTimeOffset]::Now
+                  $timelineUpdated = $tl.LastUpdatedTime
+                  $app = $session.SourceAppUserModelId
+                  $trackKey = "$app|$($props.Title)|$($props.Artist)"
+                  if ($status -eq 'Playing') {
+                    if ($trackKey -ne $playAnchorKey -or $previousStatus -ne 'Playing') {
+                      # При первом подключении к уже играющему треку учитываем
+                      # возраст SMTC. После паузы начинаем собственные часы с
+                      # последней позиции: старая LastUpdatedTime тогда не вызовет скачок.
+                      $playAnchorPosition = $rawPosition
+                      $playAnchorTime = if ($previousStatus -eq 'Paused') { $now } else { $timelineUpdated }
+                      $playAnchorKey = $trackKey
+                      $playAnchorUpdated = $timelineUpdated
+                    } elseif ($timelineUpdated -gt $playAnchorUpdated) {
+                      # SMTC прислал новую опорную позицию — переякориваем локальные часы.
+                      $playAnchorPosition = $rawPosition
+                      $playAnchorTime = $timelineUpdated
+                      $playAnchorUpdated = $timelineUpdated
+                    }
+                    $pos = $playAnchorPosition + [math]::Max(0, ($now - $playAnchorTime).TotalSeconds)
+                  } else {
+                    $pos = $rawPosition
+                    $playAnchorKey = $trackKey
+                    $playAnchorPosition = $rawPosition
+                    $playAnchorTime = $now
+                    $playAnchorUpdated = $timelineUpdated
+                  }
                   if ($tl.EndTime.TotalSeconds -gt 0) {
                     $pos = [math]::Min($pos, $tl.EndTime.TotalSeconds)
                   }
                   $pos = [math]::Round($pos, 3)
                   $end = [math]::Round($tl.EndTime.TotalSeconds, 3)
-                  $app = $session.SourceAppUserModelId
                   $line = "1|$status|$pos|$end|$(B64 $props.Title)|$(B64 $props.Artist)|$(B64 $props.AlbumTitle)|$(B64 $app)"
+                  $previousStatus = $status
                 }
               } catch { $line = "0|||||||" }
               [Console]::Out.WriteLine($line)

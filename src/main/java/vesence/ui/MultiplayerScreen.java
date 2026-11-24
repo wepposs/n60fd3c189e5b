@@ -66,7 +66,7 @@ public class MultiplayerScreen extends Screen {
 
     private static final java.util.concurrent.ExecutorService PING_POOL =
             java.util.concurrent.Executors.newCachedThreadPool(r -> {
-                Thread t = new Thread(r, "vesence Server Pinger");
+                Thread t = new Thread(r, "weppos Server Pinger");
                 t.setDaemon(true);
                 return t;
             });
@@ -114,7 +114,7 @@ public class MultiplayerScreen extends Screen {
     }
 
     public MultiplayerScreen(Screen parent) {
-        super(Component.literal("vesence Multiplayer"));
+        super(Component.literal("weppos Multiplayer"));
         this.parent = parent;
     }
 
@@ -234,14 +234,11 @@ public class MultiplayerScreen extends Screen {
         mxFb = (float) (gx0 * ((double) sw / mc.getWindow().getWidth()));
         myFb = (float) (gy0 * ((double) sh / mc.getWindow().getHeight()));
 
-        Identifier bg = Identifier.fromNamespaceAndPath("vesence", "images/main_menu/background.png");
-        // Непрозрачная подложка ПЕРЕД фоном (как в главном меню): если фон
-        // где-то полупрозрачный, без неё сквозь него просвечивал живой мир
-        // игры из кадра — это и давало «сетку». Base перекрывает мир.
-        r.rect(0, 0, sw, sh, 0, ColorUtil.getColor(0, 0, 0, 255));
-        r.drawImage(bg, 0, 0, sw, sh);
-        r.rect(0, 0, sw, sh, 0, ColorUtil.getColor(0, 45));
-        r.gradient(0, 0, sw, sh, 0, ColorUtil.getColor(255,174,247,55), ColorUtil.getColor(255,174,247,55), ColorUtil.getColor(255,0), ColorUtil.getColor(255,0));
+        // Фон как в главном меню (процедурный), старая картинка убрана.
+        r.rect(0, 0, sw, sh, 0, ColorUtil.getColor(7, 6, 11, 255));
+        r.gradient(0, 0, sw, sh, 0,
+                ColorUtil.getColor(15, 9, 16, 65), ColorUtil.getColor(8, 8, 13, 0),
+                ColorUtil.getColor(5, 8, 13, 35), ColorUtil.getColor(12, 7, 14, 45));
 
         float outro = 1f;
         if (closing) {
@@ -259,9 +256,9 @@ public class MultiplayerScreen extends Screen {
         float titleYOff = (1f - titleP) * INTRO_Y_SLIDE;
         r.pushAlpha(titleP);
         r.text(FontRegistry.SF_SEMI, PAD, 70 + titleYOff, 75, t("Сетевая игра", "MultiPlayer"),
-                new int[]{ColorUtil.getColor(255, 255), ColorUtil.getColor(255,211,251,255)}, 0, -1.5f);
+                new int[]{ColorUtil.getColor(255, 255), ColorUtil.getColor(237, 77, 104, 255)}, 0, -1.5f);
         r.text(FontRegistry.SF_SEMI, PAD, 110 + titleYOff, 50, t("Выберите сервер для подключения.", "Choose a server to connect."),
-                ColorUtil.getColor(255,174,247, 180), -1.2f);
+                ColorUtil.getColor(248, 247, 250, 180), -1.2f);
         r.popAlpha();
 
         listX = PAD;
@@ -355,7 +352,7 @@ public class MultiplayerScreen extends Screen {
             r.pushAlpha(emptyA);
             r.textCenter(FontRegistry.SF_SEMI, listX + listW / 2f, listY + listH / 2f - 65, 55,
                     ColorFormat.color(255, 255, 255) + t("Серверы не найдены.\nДобавьте первый.", "No servers were found.\nAdd your first one."),
-                    new int[]{ColorUtil.getColor(255,174, 247), ColorUtil.getColor(255,174, 247, 120)});
+                    new int[]{ColorUtil.getColor(237, 77, 104, 255), ColorUtil.getColor(237, 77, 104, 120)});
             r.popAlpha();
         }
 
@@ -384,7 +381,7 @@ public class MultiplayerScreen extends Screen {
             r.pushAlpha(ea);
             r.getTransformStack().pushTranslation(xOff, introYOff);
 
-            int cardBg = ColorUtil.overCol(ColorUtil.getColor(0, 0, 0, 145), ColorUtil.getColor(255,174, 247, 74), blend * 0.5f);
+            int cardBg = ColorUtil.overCol(ColorUtil.getColor(0, 0, 0, 145), ColorUtil.getColor(237, 77, 104, 74), blend * 0.5f);
             r.blurSquircle(cardX, eY, cardW, CARD_H, 15, 7, BorderRadius.all(35), 1f);
             r.drawSquircle(cardX, eY, cardW, CARD_H, 7, BorderRadius.all(35), cardBg);
 
@@ -450,7 +447,7 @@ public class MultiplayerScreen extends Screen {
         r.blurSquircle(addX, addY + (1f-addP)*INTRO_Y_SLIDE, addW, addH, 15, 7, BorderRadius.all(35), 1f);
         r.drawSquircle(addX, addY + (1f-addP)*INTRO_Y_SLIDE, addW, addH, 7, BorderRadius.all(35), ColorUtil.getColor(0,0,0,145));
         r.drawSquircleGradient(addX, addY + (1f-addP)*INTRO_Y_SLIDE, addW, addH, 7, BorderRadius.all(18), 0,0,
-                ColorUtil.overCol(ColorUtil.getColor(124,176,255,0), ColorUtil.getColor(255,174, 247,90), aT), ColorUtil.overCol(ColorUtil.getColor(124,176,255,0), ColorUtil.getColor(255,174, 247,90), aT));
+                ColorUtil.overCol(ColorUtil.getColor(124,176,255,0), ColorUtil.getColor(237, 77, 104,90), aT), ColorUtil.overCol(ColorUtil.getColor(124,176,255,0), ColorUtil.getColor(237, 77, 104,90), aT));
         r.textCenter(FontRegistry.SF_SEMI, addX + addW/2f, addY + (1f-addP)*INTRO_Y_SLIDE + addH/2f + 7, 35,
                 t("Добавить сервер", "Add Server"), ColorUtil.overCol(ColorUtil.replAlpha(-1,180), -1, aT));
         r.popAlpha();
@@ -464,7 +461,7 @@ public class MultiplayerScreen extends Screen {
         r.blurSquircle(backX, backY + (1f-backP)*INTRO_Y_SLIDE, backW, backH, 15, 7, BorderRadius.all(35), 1f);
         r.drawSquircle(backX, backY + (1f-backP)*INTRO_Y_SLIDE, backW, backH, 7, BorderRadius.all(35), ColorUtil.getColor(0,0,0,145));
         r.drawSquircleGradient(backX, backY + (1f-backP)*INTRO_Y_SLIDE, backW, backH, 7, BorderRadius.all(18), 0,0,
-                ColorUtil.overCol(ColorUtil.getColor(255,174,247,0), ColorUtil.getColor(255,125,125,75), bT), ColorUtil.overCol(ColorUtil.getColor(255,125,125,0), ColorUtil.getColor(255,125,125,75), bT));
+                ColorUtil.overCol(ColorUtil.getColor(237, 77, 104,0), ColorUtil.getColor(237, 77, 104,75), bT), ColorUtil.overCol(ColorUtil.getColor(237, 77, 104,0), ColorUtil.getColor(237, 77, 104,75), bT));
         r.textCenter(FontRegistry.SF_SEMI, backX + backW/2f, backY + (1f-backP)*INTRO_Y_SLIDE + backH/2f + 7, 35,
                 t("Назад", "Back"), ColorUtil.overCol(ColorUtil.replAlpha(-1,180), -1, bT));
         r.popAlpha();

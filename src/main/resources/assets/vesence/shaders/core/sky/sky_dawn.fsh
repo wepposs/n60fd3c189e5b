@@ -5,29 +5,26 @@
 
 layout(location = 0) out vec4 OutColor;
 
-// DAWN — рассвет: солнце у кромки, небо от персика и розы к глубокому синему
-// зениту, облака силуэтами с розово-золотой каймой, тают звёзды.
+// DAWN — рассвет: солнце у кромки, персик и роза у горизонта, холодный синий
+// выше, облака с тёплой подсветкой снизу, тают последние звёзды.
 void main() {
     vec3 d = worldRay(gl_FragCoord.xy);
-    vec3 sunPos = worldDir(90.0, 2.5);
+    vec3 sunDir = worldDir(40.0, 4.0);
+    vec3 T = sunTransmit(sunDir, 0.7);
 
-    vec3 col = atmosphereSun(d,
-        vec3(1.00, 0.66, 0.44),
-        vec3(0.78, 0.46, 0.55),
-        vec3(0.12, 0.18, 0.44),
-        sunPos, vec3(1.00, 0.72, 0.48), 1.00);
+    vec3 col = atmosphere(d, sunDir, 20.0, 1.0, 0.7, 1.3);
+    col += stars(d, 0.6) * smoothstep(0.05, 0.005, luma(col));
+    col += sunDisc(d, sunDir, 0.017, T);
 
-    col += sun(d, sunPos, 0.036, vec3(1.00, 0.82, 0.58));
-    col += godRays(d, sunPos, vec3(1.00, 0.75, 0.50), 0.24);
+    vec3 haze = SkyPass > 1.5 ? vec3(0.0) : atmosphere(vec3(d.x, 0.04, d.z), sunDir, 20.0, 1.0, 0.7, 1.3) * 1.1;
+    col = cirrusVeil(col, d, sunDir, T * 2.0 + vec3(0.18, 0.08, 0.10), vec3(0.20, 0.22, 0.40), 0.7, 6.0);
 
-    col = cloudVolume(col, d, sunPos, vec3(1.00, 0.84, 0.68),
-        vec3(0.30, 0.22, 0.38), vec3(1.00, 0.82, 0.66),
-        0.35, 0.058, 0.92, 47.0);
+    Cloud cl = cloudCumulus(0.36, 12.0);
+    float shafts = cloudShafts(d, sunDir, cl);
+    col = cloudVolume(col, d, cl, sunDir, T * 4.2,
+        vec3(0.30, 0.30, 0.50) * 0.55, vec3(0.60, 0.30, 0.25) * 0.28, haze, 0.0);
+    col += T * pow(max(dot(d, sunDir), 0.0), 6.0) * shafts * 0.14;
 
-    col += vec3(1.00, 0.80, 0.72) * cirrus(d, 103.0) * 0.12;
-    col += stars(d, 70.0, 0.35, 9.0) * smoothstep(0.20, 0.65, d.y);
-    col += horizonHaze(d, sunPos, vec3(1.00, 0.70, 0.48), 0.45);
-
-    col = grade(col, 1.20, -0.08);
-    OutColor = vec4(finishSky(col, d), 1.0);
+    col = grade(col, 1.08, 0.0);
+    OutColor = skyOutput(col, d);
 }

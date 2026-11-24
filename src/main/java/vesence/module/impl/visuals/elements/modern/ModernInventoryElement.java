@@ -85,7 +85,9 @@ public class ModernInventoryElement extends HudElement {
         float cx = (sx + drawSize / 2f) / guiScale;
         float cy = (sy + drawSize / 2f) / guiScale;
         m.translate(cx, cy);
-        float sc = (drawSize / guiScale) / 16f * alpha;
+        // alpha здесь — прозрачность элемента, а не множитель размера: раньше иконка
+        // уменьшалась вместе с fade-in, из-за чего предмет «просвечивал» через карточку.
+        float sc = (drawSize / guiScale) / 16f;
         m.scale(sc, sc);
         m.translate(-8f, -8f);
         ctx.item(stack, 0, 0);
@@ -100,7 +102,10 @@ public class ModernInventoryElement extends HudElement {
         Minecraft mc = Minecraft.getInstance();
         boolean isChatOpen = mc.gui.screen() instanceof ChatScreen;
 
-        boolean shouldShow = isChatOpen || (mc.player != null && !mc.player.getInventory().isEmpty());
+        // Элемент показывает свободные слоты, поэтому пустой инвентарь тоже
+        // является полноценным состоянием для отображения. Иначе карточка
+        // исчезает именно тогда, когда её счётчик и сетка полезнее всего.
+        boolean shouldShow = isChatOpen || mc.player != null;
 
         visibilityAnim.update();
         visibilityAnim.run(shouldShow ? 1.0 : 0.0, 0.15, Easings.CUBIC_OUT);

@@ -65,7 +65,7 @@ public abstract class BaritoneAimProcessorMixin {
         }
         if (!this.vesenceAnnounced) {
             this.vesenceAnnounced = true;
-            System.out.println("[vesence] живая голова: пружина Vesence ведёт взгляд Baritone");
+            System.out.println("[weppos] живая голова: пружина weppos ведёт взгляд Baritone");
         }
         // Прижимаем пружину к реально применённому углу, не сбрасывая скорость:
         // даже если лимитер Baritone подрезал прошлый шаг, разгон продолжается

@@ -66,9 +66,10 @@ public class ModernDynamicIslandElement extends HudElement {
     // так же); при рендере умножаются на ui() — масштаб текущего вьюпорта.
     private static final float PILL_H         = 36f;
     private static final float MIN_W          = 96f;
-    private static final float CONTENT_MAX_W  = 480f;
-    private static final float MUSIC_MAX_W    = 640f;
-    private static final float PILL_PAD       = 10f;
+    private static final float CONTENT_MAX_W  = 300f;
+    private static final float MUSIC_MAX_W    = 380f;
+    private static final float PILL_LENGTH_FACTOR = 1.15f;
+    private static final float PILL_PAD       = 20f;
     private static final float TEXT_SIZE      = 22f;
     private static final float SUB_TEXT_SIZE  = 16f;
     private static final float ICON_SIZE      = 8f;
@@ -95,8 +96,12 @@ public class ModernDynamicIslandElement extends HudElement {
     private static final float[] EQ_SPEEDS = {1.0f, 1.5f, 0.5f, 2.0f};
 
     // ── караоке ──────────────────────────────────────────────────────────────
-    private static final int MIN_VISIBLE_WORDS = 6;
-    private static final int MAX_VISIBLE_WORDS = 12;
+    private static final int MIN_VISIBLE_WORDS = 4;
+    private static final int MAX_VISIBLE_WORDS = 7;
+    private static final int LYRIC_WINDOW_SHIFT = 4;
+    private static final long LYRIC_PREROLL_MS = 1200L;
+    /** Разрыв между словами, считающийся паузой в песне. */
+    private static final long LYRIC_PAUSE_MS = 4000L;
     private static final int SUNG_ALPHA        = 250;
     private static final int UNSUNG_ALPHA      = 108;
 
@@ -155,6 +160,7 @@ public class ModernDynamicIslandElement extends HudElement {
 
     // Анти-дребезг караоке: сглаженная позиция и удержание окна слов.
     private long smoothPositionMs = -1L;
+    private long smoothFrameNanos = 0L;
     private String karaokeTrackKey = null;
     /** Фактические координаты отрисовки: островок центрируется по экрану. */
     private float drawX = 0f;
@@ -557,12 +563,22 @@ public class ModernDynamicIslandElement extends HudElement {
                 karaokeTrackKey = trackKey;
                 smoothPositionMs = karaokePos;
                 prevLyricStart = -1;
-            } else if (karaokePos < smoothPositionMs - 2500L) {
+            } else if (!state.playing) {
                 smoothPositionMs = karaokePos;
             } else {
-                smoothPositionMs = Math.max(smoothPositionMs, karaokePos);
-                karaokePos = smoothPositionMs;
+                // Позиция идёт непрерывно со скоростью времени, а ошибку относительно
+                // плеера «подтягиваем» плавно — без рывков вперёд/назад. Скачок
+                // больше 2.5 с (перемотка) принимаем сразу.
+                long err = karaokePos - smoothPositionMs;
+                if (Math.abs(err) > 2500L) {
+                    smoothPositionMs = karaokePos;
+                } else {
+                    long nowN = System.nanoTime();
+                    float dt = smoothFrameNanos == 0L ? 0f : Math.min(0.1f, (nowN - smoothFrameNanos) / 1e9f);
+                    smoothPositionMs += Math.round(dt * 1000f + err * Math.min(1f, dt * 3f));
+                }
             }
+            smoothFrameNanos = System.nanoTime();
             if (smoothPositionMs >= 0L) karaokePos = smoothPositionMs;
 
             lyricTokens = buildLyricTokens(renderer, f, state.lyrics, karaokePos, lyricTextW);
@@ -571,6 +587,7 @@ public class ModernDynamicIslandElement extends HudElement {
                 for (Token token : lyricTokens) {
                     wordsW += measure(renderer, f, token.text(), TEXT_SIZE * ui);
                 }
+                wordsW += Math.max(0, lyricTokens.size() - 1) * spaceWidth(renderer, f);
                 lyricsWidth = Math.min(maxMusicW, PILL_PAD * 2f * ui + leadW + wordsW);
             }
         }
@@ -597,11 +614,14 @@ public class ModernDynamicIslandElement extends HudElement {
         float titleW = measure(renderer, f, displayText, TEXT_SIZE * ui);
 
         float pillW;
+        float groupW = 0f;
         if (lyricTokens != null) {
             pillW = lyricsWidth;
         } else {
-            pillW = PILL_PAD * 2f * ui + leadW + titleW + subW + timerW;
-            pillW = Math.max(MIN_W * ui, Math.min(maxPillW, pillW));
+            groupW = leadW + titleW + subW + timerW;
+            // Таблетка в 1.5 раза длиннее содержимого; содержимое центрируется.
+            float factor = music ? 1f : PILL_LENGTH_FACTOR; // музыка и длинные названия — без растяжки
+            pillW = Math.min(maxPillW, (PILL_PAD * 2f * ui + groupW) * factor);
         }
 
         float targetW = pillW;
@@ -610,18 +630,27 @@ public class ModernDynamicIslandElement extends HudElement {
         // Ширина анимируется коротко (0.2 с): сдвиг окна слов не «прыгает»,
         // но и заметного дыхания таблетки нет.
         widthAnim.update();
-        widthAnim.run(targetW, 0.2, Easings.CUBIC_OUT);
+        widthAnim.run(Math.round(targetW), 0.2, Easings.CUBIC_OUT);
         visibilityAnim.update();
         visibilityAnim.run(1.0, 0.5, Easings.CUBIC_OUT);
-        float rectW = (float) widthAnim.get();
+        float rectW = Math.round((float) widthAnim.get());
         float rectH = targetH;
         float radius = RADIUS_BASE;
         float globalAlpha = (float) visibilityAnim.get();
         if (globalAlpha < 0.005f) return;
 
-        // Островок всегда по центру экрана и с отступом от верха.
-        drawX = (screenWidth - rectW * elemScale) / 2f;
-        drawY = Math.max(y, MIN_TOP);
+        // Первый запуск (или сброс позиции): ставим островок по центру сверху.
+        // Дальше он живёт по обычным координатам HUD-элемента, чтобы его можно
+        // было перетаскивать и чтобы hitbox совпадал с картинкой.
+        // Зафиксирован: всегда по центру экрана по горизонтали, с отступом сверху.
+        x = Math.round((screenWidth - rectW * elemScale) / 2f);
+        y = MIN_TOP;
+        targetX = x;
+        targetY = y;
+        targetInitialized = true;
+
+        drawX = Math.round(x);
+        drawY = Math.round(y);
 
         int themeColor = Renderer2D.ColorUtil.getClientColor();
 
@@ -637,13 +666,19 @@ public class ModernDynamicIslandElement extends HudElement {
         // ---- Верхняя строка (таблетка) ----
         float centerY = drawY + PILL_H * ui / 2f;
 
-        lyricSlideAnim.update();
-        lyricSlideAnim.run(0f, 0.18f, Easings.CUBIC_OUT);
+        if (state.playing) {
+            lyricSlideAnim.update();
+        } else {
+            // На паузе не продолжаем двигать окно; завершаем текущий переход.
+            lyricSlideAnim.set(0.0);
+        }
         float slide = lyricSlidePx * (float) lyricSlideAnim.get();
 
         renderer.pushClipRect(drawX, drawY, rectW, PILL_H * ui);
         try {
-            float contentX = drawX + PILL_PAD * ui;
+            float contentX = Math.round(lyricTokens != null
+                    ? drawX + PILL_PAD * ui
+                    : drawX + (rectW - groupW) / 2f);
 
             if (music) {
                 if (state.playing) {
@@ -681,6 +716,7 @@ public class ModernDynamicIslandElement extends HudElement {
             if (lyricTokens != null) {
                 float baseline = baselineFor(centerY, TEXT_SIZE * ui);
                 float cursor = contentX + slide;
+                float spaceW = spaceWidth(renderer, f);
                 for (Token token : lyricTokens) {
                     float span = Math.max(1L, token.endMs() - token.startMs());
                     float fraction = clamp01((karaokePos - token.startMs()) / span);
@@ -697,7 +733,7 @@ public class ModernDynamicIslandElement extends HudElement {
                             renderer.popClipRect();
                         }
                     }
-                    cursor += width;
+                    cursor += width + spaceW;
                 }
             } else {
                 renderer.text(f, contentX, baselineFor(centerY, TEXT_SIZE * ui), TEXT_SIZE * ui, displayText,
@@ -748,55 +784,101 @@ public class ModernDynamicIslandElement extends HudElement {
         int n = words.size();
         if (n == 0) return null;
 
-        int current = -1;
-        for (int i = 0; i < n; i++) {
-            if (words.get(i).startMs() <= positionMs) current = i;
-            else break;
+        // Последнее слово, которое уже началось. Слова отсортированы по времени,
+        // поэтому ищем бинарным поиском — одно «битое» слово не уводит окно.
+        int lo = 0, hi = n - 1, current = -1;
+        while (lo <= hi) {
+            int mid = (lo + hi) >>> 1;
+            if (words.get(mid).startMs() <= positionMs) {
+                current = mid;
+                lo = mid + 1;
+            } else {
+                hi = mid - 1;
+            }
         }
 
-        int start = Math.max(0, current - 2);
-        if (n - start < MIN_VISIBLE_WORDS && n >= MIN_VISIBLE_WORDS) {
-            start = Math.max(0, n - MIN_VISIBLE_WORDS);
+        // Не сдвигаем окно на каждом новом слове: держим его на месте и
+        // прокручиваем короткими блоками с перекрытием уже видимых слов.
+        int start = current < 0 ? 0
+                : Math.max(0, (Math.max(0, current - 2) / LYRIC_WINDOW_SHIFT) * LYRIC_WINDOW_SHIFT);
+
+        // Пауза в песне: держим последние слова на экране и переключаемся на
+        // следующую фразу только прямо перед её началом.
+        if (current >= 0 && current + 1 < n) {
+            long nextStart = words.get(current + 1).startMs();
+            if (nextStart - words.get(current).startMs() > LYRIC_PAUSE_MS
+                    && nextStart - positionMs <= LYRIC_PREROLL_MS) {
+                start = current + 1;
+            }
+        }
+        // Окно никогда не едет назад при обычном воспроизведении (только при перемотке).
+        if (prevLyricStart >= 0 && start < prevLyricStart && prevLyricStart <= current) {
+            start = prevLyricStart;
+        }
+
+        List<Token> tokens = fitWindow(renderer, f, words, start, maxTextW);
+        // Текущее слово обязано быть в окне (и желательно не последним):
+        // иначе при узком островке текст «застывает» на старом куске песни.
+        int guard = 0;
+        while (current >= 0 && start < current && guard++ < n
+                && start + tokens.size() <= Math.min(current + 1, n - 1)) {
+            start = Math.min(current, start + LYRIC_WINDOW_SHIFT);
+            tokens = fitWindow(renderer, f, words, start, maxTextW);
         }
 
         if (start != prevLyricStart && prevLyricStart >= 0) {
             float shift = 0f;
-            if (start > prevLyricStart) {
+            if (start > prevLyricStart && start - prevLyricStart < 30) {
                 for (int i = prevLyricStart; i < start && i < n; i++) {
-                    String piece = (i == prevLyricStart ? "" : " ") + words.get(i).text();
-                    shift -= measure(renderer, f, piece, TEXT_SIZE * ui);
+                    shift += measure(renderer, f, words.get(i).text(), TEXT_SIZE * ui) + spaceWidth(renderer, f);
                 }
-            } else {
+            } else if (start < prevLyricStart && prevLyricStart - start < 30) {
                 for (int i = start; i < prevLyricStart && i < n; i++) {
-                    shift += measure(renderer, f, words.get(i).text() + " ", TEXT_SIZE * ui);
+                    shift -= measure(renderer, f, words.get(i).text(), TEXT_SIZE * ui) + spaceWidth(renderer, f);
                 }
             }
+            // Большой скачок (перемотка, смена фразы после паузы) — без «пролёта».
             lyricSlidePx = shift;
-            lyricSlideAnim.set(1.0);
+            lyricSlideAnim.set(shift == 0f ? 0.0 : 1.0);
+            lyricSlideAnim.run(0.0, 0.28, Easings.CUBIC_OUT);
         }
         prevLyricStart = start;
 
-        List<Token> tokens = new ArrayList<>();
         float width = 0f;
-        for (int i = start; i < n; i++) {
-            Lyrics.Word word = words.get(i);
-            String piece = (tokens.isEmpty() ? "" : " ") + word.text();
-            float pieceW = measure(renderer, f, piece, TEXT_SIZE * ui);
-            if (width + pieceW > maxTextW) break;
-            tokens.add(new Token(piece, word.startMs(), word.endMs()));
-            width += pieceW;
-            if (tokens.size() >= MAX_VISIBLE_WORDS) break;
-        }
-
+        float spaceW = spaceWidth(renderer, f);
+        for (Token t : tokens) width += measure(renderer, f, t.text(), TEXT_SIZE * ui) + spaceW;
         while (tokens.size() < MIN_VISIBLE_WORDS && start > 0) {
             Lyrics.Word word = words.get(--start);
-            String piece = word.text() + " ";
-            float pieceW = measure(renderer, f, piece, TEXT_SIZE * ui);
+            float pieceW = measure(renderer, f, word.text(), TEXT_SIZE * ui) + spaceW;
             if (width + pieceW > maxTextW) break;
-            tokens.add(0, new Token(piece, word.startMs(), word.endMs()));
+            tokens.add(0, new Token(word.text(), word.startMs(), word.endMs()));
             width += pieceW;
         }
         return tokens.isEmpty() ? null : tokens;
+    }
+
+    /** Слова с позиции {@code start}, пока влезают в {@code maxTextW} (хотя бы одно). */
+    private List<Token> fitWindow(Renderer2D renderer, FontObject f, List<Lyrics.Word> words,
+                                  int start, float maxTextW) {
+        List<Token> tokens = new ArrayList<>();
+        float width = 0f;
+        for (int i = start; i < words.size(); i++) {
+            Lyrics.Word word = words.get(i);
+            float pieceW = measure(renderer, f, word.text(), TEXT_SIZE * ui)
+                    + (tokens.isEmpty() ? 0f : spaceWidth(renderer, f));
+            if (!tokens.isEmpty() && width + pieceW > maxTextW) break;
+            tokens.add(new Token(word.text(), word.startMs(), word.endMs()));
+            width += pieceW;
+            if (tokens.size() >= MAX_VISIBLE_WORDS) break;
+        }
+        return tokens;
+    }
+
+    /** Ширина пробела, измеренная явно (в одиночной строке с пробелом он может «схлопываться»). */
+    private float spaceWidth(Renderer2D renderer, FontObject f) {
+        float size = TEXT_SIZE * ui;
+        float w = measure(renderer, f, "a a", size) - measure(renderer, f, "aa", size);
+        return w > 1f ? w : size * 0.28f;
     }
 
     private static String ellipsize(Renderer2D renderer, FontObject f, String text,
@@ -815,7 +897,7 @@ public class ModernDynamicIslandElement extends HudElement {
 
     /** Смещение baseline, при котором центр тела глифов попадает в {@code centerY}. */
     private static float baselineFor(float centerY, float size) {
-        return centerY + 0.46f * size / 2f;
+        return Math.round(centerY + 0.46f * size / 2f);
     }
 
     private static float measure(Renderer2D renderer, FontObject f, String text, float size) {
@@ -851,6 +933,12 @@ public class ModernDynamicIslandElement extends HudElement {
         m.translate(-8f, -8f);
         ctx.item(stack, 0, 0);
         m.popMatrix();
+    }
+
+    /** Островок зафиксирован: не наводится, не перетаскивается, без анимаций press/hover. */
+    @Override
+    public boolean isHovered(double mouseX, double mouseY, Renderer2D renderer, FontObject font) {
+        return false;
     }
 
     @Override

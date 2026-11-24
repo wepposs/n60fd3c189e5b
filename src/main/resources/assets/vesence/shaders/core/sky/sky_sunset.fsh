@@ -5,30 +5,27 @@
 
 layout(location = 0) out vec4 OutColor;
 
-// SUNSET — золотой час: низкое солнце, янтарно-розовая полоса у горизонта,
-// пурпурные силуэты облаков с золотой каймой, высокие перистые горят розовым,
-// первые звёзды в зените.
+// SUNSET — золотой час: низкое солнце сквозь плотный воздух, янтарно-розовая
+// полоса, облака с янтарной подсветкой снизу и тёмными верхами, перистые горят,
+// лучи света в разрывах облаков, первые звёзды в зените.
 void main() {
     vec3 d = worldRay(gl_FragCoord.xy);
-    vec3 sunPos = worldDir(270.0, 6.0);
+    vec3 sunDir = worldDir(30.0, 3.0);
+    vec3 T = sunTransmit(sunDir, 0.9);
 
-    vec3 col = atmosphereSun(d,
-        vec3(1.00, 0.52, 0.22),
-        vec3(0.82, 0.32, 0.34),
-        vec3(0.14, 0.12, 0.36),
-        sunPos, vec3(1.00, 0.60, 0.30), 1.20);
+    vec3 col = atmosphere(d, sunDir, 22.0, 1.0, 0.9, 1.0);
+    col += stars(d, 0.7) * smoothstep(0.06, 0.01, luma(col));
+    col += sunDisc(d, sunDir, 0.018, T);
 
-    col += sun(d, sunPos, 0.034, vec3(1.00, 0.72, 0.42));
-    col += godRays(d, sunPos, vec3(1.00, 0.62, 0.30), 0.28);
+    vec3 haze = SkyPass > 1.5 ? vec3(0.0) : atmosphere(vec3(d.x, 0.04, d.z), sunDir, 22.0, 1.0, 0.9, 1.0) * 1.1;
+    col = cirrusVeil(col, d, sunDir, T * 2.4 + vec3(0.2, 0.08, 0.05), vec3(0.22, 0.20, 0.36), 0.75, 4.0);
 
-    col = cloudVolume(col, d, sunPos, vec3(1.00, 0.80, 0.55),
-        vec3(0.24, 0.14, 0.28), vec3(1.00, 0.78, 0.52),
-        0.45, 0.055, 0.95, 33.0);
+    Cloud cl = cloudCumulus(0.45, 7.0);
+    float shafts = cloudShafts(d, sunDir, cl);
+    col = cloudVolume(col, d, cl, sunDir, T * 7.0,
+        vec3(0.36, 0.30, 0.52) * 1.0, vec3(0.95, 0.42, 0.20) * 0.85, haze, 0.0);
+    col += T * pow(max(dot(d, sunDir), 0.0), 6.0) * shafts * 0.16;
 
-    col += vec3(1.00, 0.72, 0.60) * cirrus(d, 91.0) * 0.16;
-    col += stars(d, 60.0, 0.30, 5.0) * smoothstep(0.25, 0.70, d.y);
-    col += horizonHaze(d, sunPos, vec3(1.00, 0.60, 0.30), 0.50);
-
-    col = grade(col, 1.25, -0.05);
-    OutColor = vec4(finishSky(col, d), 1.0);
+    col = grade(col, 1.10, 0.0);
+    OutColor = skyOutput(col, d);
 }

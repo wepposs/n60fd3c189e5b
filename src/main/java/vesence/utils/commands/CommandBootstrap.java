@@ -23,6 +23,7 @@ public final class CommandBootstrap {
          manager.register(StaffCommand.getInstance());
          manager.register(vesence.utils.macro.MacroCommand.getInstance());
          manager.register(vesence.utils.bind.BindCommand.getInstance());
+         manager.register(WallClimbCommand.getInstance());
          manager.register(WaypointCommand.getInstance());
          manager.register(GotoCommand.getInstance());
          manager.register(EventCommand.getInstance());

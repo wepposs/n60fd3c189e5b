@@ -66,6 +66,16 @@ public final class SkyShotTest {
             amb.enable = true;
             Ambience.skyShader.set(true);
             Ambience.hideSunMoon.set(true);
+            // Размытие мира мылит небо, кубы/линии рисуются поверх — для
+            // оценки самого шейдера всё это выключаем.
+            Ambience.blurWorld.set(false);
+            for (String fName : new String[]{"cubesEnabled", "glyphsEnabled"}) {
+                try {
+                    var f = Ambience.class.getDeclaredField(fName);
+                    f.setAccessible(true);
+                    ((vesence.module.api.setting.impl.BooleanSetting) f.get(amb)).set(false);
+                } catch (ReflectiveOperationException ignored) {}
+            }
             // Туман мира подмешивается в низ неба (finishSky) и в тесте
             // перекрашивает дневные сцены в серый. Для оценки шейдера он
             // должен быть выключен.
@@ -73,7 +83,9 @@ public final class SkyShotTest {
             // HUD-элементы vesence рисуются поверх неба и засоряют кадр.
             if (vesence.Vesence.get != null && vesence.Vesence.get.manager != null) {
                 for (var m : vesence.Vesence.get.manager.getModules()) {
-                    if (m instanceof vesence.module.impl.visuals.Hud) m.enable = false;
+                    // Всё, кроме самого неба, выключаем: частицы, линии и
+                    // прочие оверлеи рисуются поверх и засоряют кадр.
+                    if (m != amb) m.enable = false;
                 }
             }
             // Ясная погода и полдень: частицы дождя и ночная темнота портят
@@ -114,7 +126,8 @@ public final class SkyShotTest {
                     + " pipeline=" + SkyShaderRenderer.getInstance().debugPipelineReady(
                             SkyShaderRenderer.SHADER_NAMES[modeIdx])
                     + " screen=" + mc.gui.screen()
-                    + " paused=" + mc.isPaused());
+                    + " paused=" + mc.isPaused()
+                    + " fps=" + mc.getFps());
             Screenshot.grab(new File("skytest-shots"), file,
                     mc.gameRenderer.mainRenderTarget(), 1, t -> System.out.println("[skytest] saved " + file));
         }

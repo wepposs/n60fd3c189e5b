@@ -65,7 +65,7 @@ public final class SetCommand implements BaritoneCommand {
             case "look", "smooth" -> {
                 boolean on = parseBool(value);
                 engine.setLookSmoothing(on);
-                ctx.success("голова: " + (on ? "пружина Vesence" : "штатный Baritone"));
+                ctx.success("голова: " + (on ? "пружина weppos" : "штатный Baritone"));
             }
             default -> throw new BaritoneCommandException("нет такой настройки: " + key);
         }

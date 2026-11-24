@@ -293,10 +293,10 @@ public class CompactModuleWindow {
             }
             int bg = ColorUtil.multAlpha(ColorUtil.multDark(cCol, 0.10f), ga);
             int bg2 = ColorUtil.multAlpha(ColorUtil.multDark(cCol, 0.05f), ga);
-            r.gradient(x, y, w, h, corner, bg, bg, bg2, bg2, true);
+            r.gradient(x, y, w, h, corner, bg, bg, bg2, bg2, false);
             int outline = ColorUtil.multAlpha(ColorUtil.multDark(cCol, 1f), ga);
             r.gradientOutline(x, y, w, h, corner, outline, outline,
-                    ColorUtil.multAlpha(ColorUtil.BLACK, 0), ColorUtil.multAlpha(ColorUtil.BLACK, 0), 1f, true);
+                    ColorUtil.multAlpha(ColorUtil.BLACK, 0), ColorUtil.multAlpha(ColorUtil.BLACK, 0), 1f, false);
         } else {
             r.drawSquircleShadow(x - 5, y - 5, w + 10, h + 10, ClickGui.getGuiSquirt(),
                     BorderRadius.all(corner), 15, 1, ColorUtil.replAlpha(cCol, (int) (15 * a)));

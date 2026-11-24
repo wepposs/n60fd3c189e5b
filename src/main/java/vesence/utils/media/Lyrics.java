@@ -30,6 +30,9 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import org.yaml.snakeyaml.LoaderOptions;
+import org.yaml.snakeyaml.Yaml;
+import org.yaml.snakeyaml.constructor.SafeConstructor;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -61,7 +64,10 @@ public final class Lyrics {
     }
 
     /** Разобранный текст: плоский список слов (строки склеены). */
-    public record Doc(List<Word> words, boolean synced) {
+    public record Doc(List<Word> words, boolean synced, boolean wordSynced) {
+        public Doc(List<Word> words, boolean synced) {
+            this(words, synced, false);
+        }
     }
 
     private static final Pattern LINE_TS = Pattern.compile("\\[(\\d{1,3}):(\\d{2})(?:[.:](\\d{1,3}))?]");
@@ -72,6 +78,7 @@ public final class Lyrics {
     private static final Map<String, Doc> CACHE = new ConcurrentHashMap<>();
     private static final Map<String, Long> MISS = new ConcurrentHashMap<>();
     private static final Set<String> LOADING = ConcurrentHashMap.newKeySet();
+    private static final Map<String, Long> ONLINE_REFRESHED = new ConcurrentHashMap<>();
     private static final ExecutorService EXEC = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "vesence-lyrics");
         t.setDaemon(true);
@@ -96,7 +103,10 @@ public final class Lyrics {
         if (title == null || title.isBlank()) return null;
         String key = key(title, artist, durationMs);
         Doc cached = CACHE.get(key);
-        if (cached != null) return cached;
+        if (cached != null) {
+            refreshWordSync(key, title, artist, durationMs, cached);
+            return cached;
+        }
 
         Long missedAt = MISS.get(key);
         if (missedAt != null && System.currentTimeMillis() - missedAt < MISS_RETRY_MS) return null;
@@ -119,6 +129,30 @@ public final class Lyrics {
             });
         }
         return null;
+    }
+
+    private static void refreshWordSync(String key, String title, String artist, long durationMs, Doc current) {
+        if (!online || current.wordSynced()) return;
+        long now = System.currentTimeMillis();
+        java.util.concurrent.atomic.AtomicBoolean shouldRefresh = new java.util.concurrent.atomic.AtomicBoolean();
+        ONLINE_REFRESHED.compute(key, (ignored, lastAttempt) -> {
+            if (lastAttempt == null || now - lastAttempt >= MISS_RETRY_MS) {
+                shouldRefresh.set(true);
+                return now;
+            }
+            return lastAttempt;
+        });
+        if (!shouldRefresh.get()) return;
+        EXEC.execute(() -> {
+            try {
+                Doc better = fetchLrclib(title, artist == null ? "" : artist.trim(), durationMs);
+                if (better != null && better.wordSynced()) {
+                    CACHE.put(key, better);
+                    System.out.println("[NowPlaying] lyrics: word-synced LRCLIB lyrics for " + title);
+                }
+            } catch (Throwable ignored) {
+            }
+        });
     }
 
     // ── загрузка ─────────────────────────────────────────────────────────────
@@ -224,8 +258,46 @@ public final class Lyrics {
         return null;
     }
 
+    private static Doc parseLyricsfile(String source) {
+        try {
+            Object parsed = new Yaml(new SafeConstructor(new LoaderOptions())).load(source);
+            if (!(parsed instanceof Map<?, ?> root) || !(root.get("lines") instanceof List<?> lines)) return null;
+            List<Word> words = new ArrayList<>();
+            for (Object lineValue : lines) {
+                if (!(lineValue instanceof Map<?, ?> line) || !(line.get("words") instanceof List<?> lineWords)) continue;
+                List<Map<?, ?>> validWords = new ArrayList<>();
+                for (Object wordValue : lineWords) if (wordValue instanceof Map<?, ?> word) validWords.add(word);
+                for (int i = 0; i < validWords.size(); i++) {
+                    Map<?, ?> word = validWords.get(i);
+                    Object textValue = word.get("text");
+                    Object startValue = word.get("start_ms");
+                    if (!(textValue instanceof String text) || !(startValue instanceof Number startNumber)) continue;
+                    long start = Math.max(0L, startNumber.longValue());
+                    Object endValue = word.get("end_ms");
+                    long end;
+                    if (endValue instanceof Number endNumber) {
+                        end = endNumber.longValue();
+                    } else if (i + 1 < validWords.size() && validWords.get(i + 1).get("start_ms") instanceof Number next) {
+                        end = next.longValue();
+                    } else if (line.get("end_ms") instanceof Number lineEnd) {
+                        end = lineEnd.longValue();
+                    } else {
+                        end = start + 250L;
+                    }
+                    words.add(new Word(text, start, Math.max(start + 1L, end)));
+                }
+            }
+            if (words.isEmpty()) return null;
+            words.sort(Comparator.comparingLong(Word::startMs));
+            return new Doc(List.copyOf(words), true, true);
+        } catch (RuntimeException ignored) {
+            return null;
+        }
+    }
+
     /** LRCLIB: точный запрос по названию/исполнителю, затем поиск. */
     private static Doc fetchLrclib(String title, String artist, long durationMs) {
+        Doc exactDoc = null;
         try {
             String exactUrl = "https://lrclib.net/api/get?track_name="
                     + URLEncoder.encode(title, StandardCharsets.UTF_8)
@@ -235,7 +307,7 @@ public final class Lyrics {
                     HttpRequest.newBuilder(URI.create(exactUrl))
                             .timeout(Duration.ofSeconds(7))
                             .header("Accept", "application/json")
-                            .header("User-Agent", "VesenceClient/1.0 (Minecraft mod)")
+                            .header("User-Agent", "weppos/1.0 (Minecraft mod)")
                             .GET()
                             .build(),
                     HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
@@ -243,13 +315,18 @@ public final class Lyrics {
                 JsonElement result = JsonParser.parseString(exact.body());
                 if (result.isJsonObject()) {
                     JsonObject obj = result.getAsJsonObject();
+                    if (obj.has("hasWordSync") && obj.get("hasWordSync").getAsBoolean()
+                            && hasText(obj, "lyricsfile")) {
+                        Doc wordDoc = parseLyricsfile(obj.get("lyricsfile").getAsString());
+                        if (wordDoc != null) return wordDoc;
+                    }
                     String text = hasText(obj, "syncedLyrics")
                             ? obj.get("syncedLyrics").getAsString()
                             : hasText(obj, "plainLyrics") ? obj.get("plainLyrics").getAsString() : null;
                     Doc doc = parse(text, durationMs);
                     if (doc != null) {
-                        cacheOnlineDoc(artist, title, text);
-                        return doc;
+                        if (doc.wordSynced()) return doc;
+                        exactDoc = doc;
                     }
                 }
             }
@@ -261,38 +338,56 @@ public final class Lyrics {
                     HttpRequest.newBuilder(URI.create(url))
                             .timeout(Duration.ofSeconds(7))
                             .header("Accept", "application/json")
-                            .header("User-Agent", "VesenceClient/1.0 (Minecraft mod)")
+                            .header("User-Agent", "weppos/1.0 (Minecraft mod)")
                             .GET()
                             .build(),
                     HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-            if (resp.statusCode() != 200) return null;
+            if (resp.statusCode() != 200) return exactDoc;
 
             JsonElement root = JsonParser.parseString(resp.body());
-            if (!root.isJsonArray()) return null;
+            if (!root.isJsonArray()) return exactDoc;
             JsonArray arr = root.getAsJsonArray();
 
             JsonObject best = null;
             JsonObject bestPlain = null;
+            JsonObject bestWordSynced = null;
             for (JsonElement el : arr) {
                 if (el == null || !el.isJsonObject()) continue;
                 JsonObject obj = el.getAsJsonObject();
-                if (hasText(obj, "syncedLyrics")) {
+                if (obj.has("hasWordSync") && obj.get("hasWordSync").getAsBoolean()
+                        && hasText(obj, "lyricsfile")) {
+                    if (bestWordSynced == null || closerDuration(obj, bestWordSynced, durationMs)) {
+                        bestWordSynced = obj;
+                    }
+                } else if (hasText(obj, "syncedLyrics")) {
                     if (best == null || closerDuration(obj, best, durationMs)) best = obj;
                 } else if (hasText(obj, "plainLyrics") && bestPlain == null) {
                     bestPlain = obj;
                 }
             }
+            if (bestWordSynced != null) {
+                Doc wordDoc = parseLyricsfile(bestWordSynced.get("lyricsfile").getAsString());
+                if (wordDoc != null) {
+                    if (hasText(bestWordSynced, "syncedLyrics")) {
+                        cacheOnlineDoc(artist, title, bestWordSynced.get("syncedLyrics").getAsString());
+                    }
+                    return wordDoc;
+                }
+            }
             if (best == null) best = bestPlain;
-            if (best == null) return null;
+            if (best == null) return exactDoc;
 
             String text = hasText(best, "syncedLyrics")
                     ? best.get("syncedLyrics").getAsString()
                     : best.get("plainLyrics").getAsString();
             Doc doc = parse(text, durationMs);
-            if (doc != null) cacheOnlineDoc(artist, title, text);
-            return doc;
+            if (doc != null) {
+                cacheOnlineDoc(artist, title, text);
+                return doc;
+            }
+            return exactDoc;
         } catch (Exception e) {
-            return null;
+            return exactDoc;
         }
     }
 
@@ -306,7 +401,7 @@ public final class Lyrics {
             HttpResponse<String> resp = httpClient().send(
                     HttpRequest.newBuilder(URI.create(url))
                             .timeout(Duration.ofSeconds(8))
-                            .header("User-Agent", "VesenceClient/1.0 (Minecraft mod)")
+                            .header("User-Agent", "weppos/1.0 (Minecraft mod)")
                             .GET()
                             .build(),
                     HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
@@ -332,7 +427,7 @@ public final class Lyrics {
             HttpResponse<String> resp = httpClient().send(
                     HttpRequest.newBuilder(URI.create(url))
                             .timeout(Duration.ofSeconds(8))
-                            .header("User-Agent", "VesenceClient/1.0 (Minecraft mod)")
+                            .header("User-Agent", "weppos/1.0 (Minecraft mod)")
                             .GET()
                             .build(),
                     HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
@@ -403,12 +498,62 @@ public final class Lyrics {
 
     private static final class Entry {
         final long startMs;
-        final String text;
+        String text;
 
         Entry(long startMs, String text) {
             this.startMs = startMs;
             this.text = text;
         }
+    }
+
+    /** Restore repeated chorus lines abbreviated to an earlier phrase's suffix. */
+    private static void restoreRepeatedSuffixLines(List<Entry> entries) {
+        for (int first = 0; first < entries.size();) {
+            String repeated = normalizedWords(entries.get(first).text);
+            if (repeated.isEmpty()) {
+                first++;
+                continue;
+            }
+
+            int end = first + 1;
+            while (end < entries.size()
+                    && repeated.equals(normalizedWords(entries.get(end).text))) {
+                long gap = entries.get(end).startMs - entries.get(end - 1).startMs;
+                if (gap <= 0L || gap > 5000L) break;
+                end++;
+            }
+
+            if (end - first >= 3) {
+                String[] suffix = repeated.split(" ");
+                Entry source = null;
+                for (int i = first - 1; i >= 0; i--) {
+                    String[] candidate = normalizedWords(entries.get(i).text).split(" ");
+                    if (candidate.length > suffix.length && endsWith(candidate, suffix)) {
+                        source = entries.get(i);
+                        break;
+                    }
+                }
+                if (source != null) {
+                    for (int i = first; i < end; i++) entries.get(i).text = source.text;
+                }
+            }
+            first = end;
+        }
+    }
+
+    private static boolean endsWith(String[] words, String[] suffix) {
+        int offset = words.length - suffix.length;
+        for (int i = 0; i < suffix.length; i++) {
+            if (!words[offset + i].equals(suffix[i])) return false;
+        }
+        return true;
+    }
+
+    private static String normalizedWords(String text) {
+        String normalized = text.toLowerCase(Locale.ROOT)
+                .replaceAll("<\\d{1,3}:\\d{2}(?:[.:]\\d{1,3})?>", "")
+                .replaceAll("[^\\p{L}\\p{N}]+", " ").trim();
+        return normalized.replaceAll("\\s+", " ");
     }
 
     private static final class Tag {
@@ -448,6 +593,8 @@ public final class Lyrics {
         }
         if (entries.isEmpty()) return null;
         entries.sort(Comparator.comparingLong(e -> e.startMs));
+        restoreRepeatedSuffixLines(entries);
+        boolean hasWordSync = entries.stream().anyMatch(e -> WORD_TS.matcher(e.text).find());
 
         List<Word> words = new ArrayList<>();
         for (int i = 0; i < entries.size() && words.size() < MAX_WORDS; i++) {
@@ -459,7 +606,8 @@ public final class Lyrics {
             appendLine(words, e.text, e.startMs, lineEnd);
         }
         if (words.isEmpty()) return null;
-        return new Doc(List.copyOf(words), true);
+        words.sort(Comparator.comparingLong(Word::startMs));
+        return new Doc(List.copyOf(words), true, hasWordSync);
     }
 
     private static Doc parsePlain(String text, long durationMs) {
@@ -484,11 +632,12 @@ public final class Lyrics {
         while (wm.find()) tags.add(new Tag(wm.start(), wm.end(), tsToMs(wm)));
 
         if (tags.isEmpty()) {
-            // Между строкой и следующей часто есть пауза/проигрыш. Если растянуть
-            // слова на весь интервал, заливка еле ползёт. Ограничиваем окно
-            // реалистичным темпом речи/пения.
-            long singEnd = Math.min(end, start + estimateLineMs(body));
-            distribute(out, body, start, Math.max(start + 400L, singEnd));
+            // Между LRC-строками часто есть вокальная пауза. Оставляем часть
+            // интервала неподсвеченной вместо того, чтобы тянуть слова до следующего таймкода.
+            long lineSpan = Math.max(0L, end - start);
+            long restMs = lineSpan >= 1000L ? Math.min(500L, lineSpan * 18L / 100L) : 0L;
+            long singEnd = Math.min(end - restMs, start + estimateLineMs(body));
+            distribute(out, body, start, Math.max(start + 1L, singEnd));
             return;
         }
 
@@ -522,19 +671,19 @@ public final class Lyrics {
         }
         if (words.isEmpty() || totalChars <= 0) return;
 
-        long span = Math.max(200L, end - start);
+        long span = Math.max(1L, end - start);
         long acc = 0L;
         for (String word : words) {
             long wStart = start + span * acc / totalChars;
             acc += word.length();
             long wEnd = start + span * acc / totalChars;
-            out.add(new Word(word, wStart, Math.max(wStart + 60L, wEnd)));
+            out.add(new Word(word, wStart, Math.max(wStart + 1L, wEnd)));
         }
     }
 
     private static long estimateLineMs(String text) {
         int words = text.trim().split("\\s+").length;
-        return Math.max(2200L, words * 420L);
+        return Math.max(2200L, words * 600L);
     }
 
     private static long tsToMs(Matcher m) {

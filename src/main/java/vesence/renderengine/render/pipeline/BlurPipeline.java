@@ -1,9 +1,5 @@
 package vesence.renderengine.render.pipeline;
 
-import net.minecraft.client.Minecraft;
-import com.mojang.blaze3d.pipeline.RenderTarget;
-import com.mojang.renderpearl.backend.opengl.GlTexture;
-import com.mojang.renderpearl.api.textures.GpuTextureView;
 import org.lwjgl.opengl.*;
 import org.lwjgl.system.MemoryUtil;
 import vesence.renderengine.providers.GlState;
@@ -66,22 +62,14 @@ public class BlurPipeline {
             int iw = (int)viewW;
             int ih = (int)viewH;
 
-            int kawaseTex = FrameBlurCache.prepareForRadius(radius);
+            int srcTexId = FrameBlurCache.prepareSafeSource();
+            int preBlurred = 0;
+            if (srcTexId == 0) return;
 
             GlState.Snapshot state = GlState.push();
             try {
                 GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, state.drawFramebuffer);
                 GL11.glViewport(0, 0, iw, ih);
-
-                RenderTarget mainFb = Minecraft.getInstance().gameRenderer.mainRenderTarget();
-
-                int srcTexId = kawaseTex;
-                int preBlurred = 1;
-                if (srcTexId == 0) {
-                    srcTexId = extractGlTexId(mainFb);
-                    preBlurred = 0;
-                }
-                if (srcTexId == 0) return;
 
                 long frame = vesence.Vesence.getRenderFrameId();
                 if (frame != srcFrameStamp || srcTexId != srcTexCached) {
@@ -141,20 +129,6 @@ public class BlurPipeline {
     private static int iterationsFor(float blurRadius) {
         int it = Math.round(blurRadius / 6.0f);
         return Math.max(2, Math.min(it, 6));
-    }
-
-    private static int extractGlTexId(RenderTarget framebuffer) {
-        if (framebuffer == null) return 0;
-        try {
-            GpuTextureView view = framebuffer.getColorTextureView();
-            if (view != null && !view.isClosed()) {
-                if (view.texture() instanceof GlTexture glTex) return glTex.glId();
-            }
-        } catch (Exception ignored) {}
-        try {
-            if (framebuffer.getColorTexture() instanceof GlTexture glTex) return glTex.glId();
-        } catch (Exception ignored) {}
-        return 0;
     }
 
     public void close() {

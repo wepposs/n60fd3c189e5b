@@ -8,7 +8,7 @@ import net.minecraft.client.gui.screens.LoadingOverlay;
 import net.minecraft.client.gui.screens.Screen;
 import com.mojang.blaze3d.platform.Window;
 import net.minecraft.server.packs.resources.ReloadInstance;
-import net.minecraft.resources.Identifier;
+
 import net.minecraft.util.Mth;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL30;
@@ -122,39 +122,26 @@ public abstract class SplashOverlayMixin {
 
         r.pushAlpha(a);
 
-        Identifier bg = Identifier.fromNamespaceAndPath("vesence", "images/main_menu/background.png");
-        r.drawImage(bg, 0, 0, sw, sh);
-        r.rect(0, 0, sw, sh, 0, ColorUtil.getColor(0, 150));
+        // Процедурный фон как в главном меню.
+        r.rect(0, 0, sw, sh, 0, ColorUtil.getColor(7, 6, 11, 255));
         r.gradient(0, 0, sw, sh, 0,
-                ColorUtil.getColor(255, 174, 247, 55), ColorUtil.getColor(255, 174, 247, 55),
-                ColorUtil.getColor(255, 0), ColorUtil.getColor(255, 0));
+                ColorUtil.getColor(15, 9, 16, 65), ColorUtil.getColor(8, 8, 13, 0),
+                ColorUtil.getColor(5, 8, 13, 35), ColorUtil.getColor(12, 7, 14, 45));
+        r.rect(0, 0, sw, sh, 0, ColorUtil.getColor(0, 110));
 
         float cx = sw / 2f;
         float cy = sh / 2f - sh * 0.03f;
         float scale = sh / 1080f;
-        float ringR = 26f * scale;
-        float dotR = 3.2f * scale;
+        float ringR = 40f * scale;
+        float ringThickness = 3.5f * scale;
 
-        int dots = 12;
-        for (int i = 0; i < dots; i++) {
-            float ang = (float) Math.toRadians(i * (360f / dots)) - (float) Math.toRadians(vesence$spin);
-            float dx = cx + (float) Math.cos(ang) * ringR;
-            float dy = cy + (float) Math.sin(ang) * ringR;
-
-            float t = i / (float) dots;
-            int dotA = (int) (40 + 215 * t);
-            r.drawCircle(dx, dy, dotR, ColorUtil.getColor(255, 174, 247, dotA));
-        }
+        // Круговой индикатор загрузки: бледное кольцо + бегущая дуга.
+        r.circleOutline(cx, cy, ringR, 0f, 1f, ColorUtil.getColor(237, 77, 104, 45), ringThickness);
+        r.circleOutline(cx, cy, ringR, -vesence$spin, 0.28f, ColorUtil.getColor(237, 77, 104, 255), ringThickness);
 
         int pct = Math.round(Mth.clamp(this.currentProgress, 0f, 1f) * 100f);
-        r.textCenter(FontRegistry.SF_SEMI, cx, cy + ringR + 40f * scale, 40f * scale,
-                pct + "%", new int[]{ColorUtil.getColor(255, 255), ColorUtil.getColor(255, 211, 251, 255)});
-
-        float barH = 5f * scale;
-        float barY = sh - barH;
-        r.rect(0, barY, sw, barH, ColorUtil.getColor(255, 174, 247, 40));
-        float fillW = sw * Mth.clamp(this.currentProgress, 0f, 1f);
-        r.rect(0, barY, fillW, barH, ColorUtil.getColor(255, 174, 247, 255));
+        r.textCenter(FontRegistry.SF_SEMI, cx, cy + ringR + 42f * scale, 40f * scale,
+                pct + "%", new int[]{ColorUtil.getColor(255, 255), ColorUtil.getColor(248, 247, 250, 255)});
 
         r.popAlpha();
     }

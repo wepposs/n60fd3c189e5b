@@ -54,7 +54,7 @@ public class GuiScreenRedirectMixin {
         try {
             if (isTitle) {
                 ci.cancel();
-                mc.gui.setScreen(new MainScreen());
+                mc.gui.setScreen(vesence.ui.WelcomeScreen.createForLaunch());
             } else {
                 ci.cancel();
                 boolean ru = false;

@@ -25,7 +25,7 @@ public final class WorldRenderLayers {
       private static final int QUAD_BUFFER_SIZE_BYTES = 1024;
       private static final int LINE_BUFFER_SIZE_BYTES = 256;
       private static final String PIPELINE_NAMESPACE = "vesence";
-      private static final DepthStencilState LEQUAL_DEPTH = new DepthStencilState(CompareOp.LESS_THAN_OR_EQUAL, true);
+      private static final DepthStencilState LEQUAL_DEPTH = new DepthStencilState(CompareOp.GREATER_THAN_OR_EQUAL, true);
       private static final DepthStencilState NO_DEPTH = new DepthStencilState(CompareOp.ALWAYS_PASS, false);
       private static final RenderPipeline POSITION_COLOR_QUADS_PIPELINE = RenderPipelines.register(
                   RenderPipeline.builder(new Snippet[] { RenderPipelines.MATRICES_FOG_SNIPPET })
@@ -86,7 +86,7 @@ public final class WorldRenderLayers {
                               .withVertexBinding(0, DefaultVertexFormat.POSITION_TEX_COLOR)
                               .withPrimitiveTopology(PrimitiveTopology.QUADS)
                               .withCull(false)
-                              .withDepthStencilState(new DepthStencilState(CompareOp.LESS_THAN_OR_EQUAL, false))
+                              .withDepthStencilState(new DepthStencilState(CompareOp.GREATER_THAN_OR_EQUAL, false))
                               .withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
                               .build());
       private static final RenderPipeline TEXTURED_QUADS_ADDITIVE_PIPELINE = RenderPipelines.register(

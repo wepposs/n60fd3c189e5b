@@ -1522,19 +1522,19 @@ public final class GlBackend {
          if (view != null && !view.isClosed()) {
             com.mojang.renderpearl.api.textures.GpuTexture tex = view.texture();
             if (!extractLogDone) {
-               System.out.println("[VesenceBlur] view=" + view + " tex=" + tex + " isGlTexture=" + (tex instanceof GlTexture));
+               System.out.println("[wepposBlur] view=" + view + " tex=" + tex + " isGlTexture=" + (tex instanceof GlTexture));
                extractLogDone = true;
             }
             if (tex instanceof GlTexture glTex) return glTex.glId();
          }
       } catch (Exception e) {
-         if (!extractLogDone) { System.out.println("[VesenceBlur] view exception: " + e); extractLogDone = true; }
+         if (!extractLogDone) { System.out.println("[wepposBlur] view exception: " + e); extractLogDone = true; }
       }
 
       try {
          if (framebuffer.getColorTexture() instanceof GlTexture glTex) return glTex.glId();
       } catch (Exception ignored) {}
-      if (!extractLogDone) { System.out.println("[VesenceBlur] both paths returned 0"); extractLogDone = true; }
+      if (!extractLogDone) { System.out.println("[wepposBlur] both paths returned 0"); extractLogDone = true; }
       return 0;
    }
 }

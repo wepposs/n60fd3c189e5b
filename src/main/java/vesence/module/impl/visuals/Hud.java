@@ -68,7 +68,8 @@ public class Hud extends Module {
             new BooleanSetting("Motion Graph", false),
             new BooleanSetting("Nearby Players", false),
             new BooleanSetting("Boss Bar", false),
-            new BooleanSetting("Dynamic Island", false)
+            new BooleanSetting("Dynamic Island", false),
+            new BooleanSetting("Radio", false)
     );
 
     private final BooleanSetting mentionAlert = Notifications.mentionAlert;
@@ -84,6 +85,7 @@ public class Hud extends Module {
     public final BooleanSetting watermarkAnimated = new BooleanSetting("Animated", true);
 
     private final List<HudElement> hudElements = new ArrayList<>();
+    private final List<HudElement> snapTargetsScratch = new ArrayList<>();
     private boolean prevLeftDown  = false;
     private boolean prevRightDown = false;
 
@@ -127,6 +129,7 @@ public class Hud extends Module {
         hudElements.add(new ModernNearbyPlayersElement());
         hudElements.add(new ModernBossBarElement());
         hudElements.add(new ModernDynamicIslandElement());
+        hudElements.add(new ModernRadioElement());
 
         this.addSettings(
                 elements,
@@ -151,6 +154,13 @@ public class Hud extends Module {
 
     public List<HudElement> getHudElements() {
         return hudElements;
+    }
+
+    public HudElement getElement(String name) {
+        for (HudElement element : hudElements) {
+            if (element.name.equals(name)) return element;
+        }
+        return null;
     }
 
     public List<HudElement> getAllHudElements() {
@@ -223,9 +233,8 @@ public class Hud extends Module {
         boolean shiftDown = false;
 
         if (isGuiOpen) {
-            double[] mx = new double[1], my = new double[1];
-            mx[0] = mc.mouseHandler.xpos();
-            my[0] = mc.mouseHandler.ypos();
+            double rawMouseX = mc.mouseHandler.xpos();
+            double rawMouseY = mc.mouseHandler.ypos();
             // 26.3: MouseHandler.isLeftPressed/isRightPressed обновляются только когда
             // экран НЕ открыт (vanilla пропускает запись флагов при gui.screen() != null),
             // а HUD-редактор живёт в ChatScreen — поэтому состояние кнопок берём
@@ -239,8 +248,8 @@ public class Hud extends Module {
 
             double ratioX = (double) event.viewportWidth()  / mc.getWindow().getWidth();
             double ratioY = (double) event.viewportHeight() / mc.getWindow().getHeight();
-            mouseX = mx[0] * ratioX;
-            mouseY = my[0] * ratioY;
+            mouseX = rawMouseX * ratioX;
+            mouseY = rawMouseY * ratioY;
         }
 
         if (HUD_DEBUG && isChatOpen && testMouse == null && (System.currentTimeMillis() / 600) % 2 == 0) {
@@ -367,7 +376,8 @@ public class Hud extends Module {
 
         List<HudElement> renderList = getHudElements();
 
-        List<HudElement> snapTargets = new ArrayList<>();
+        List<HudElement> snapTargets = this.snapTargetsScratch;
+        snapTargets.clear();
         for (HudElement element : renderList) {
             if (elements.get(element.name)) snapTargets.add(element);
         }
@@ -406,15 +416,12 @@ public class Hud extends Module {
         for (HudElement element : renderList) {
             boolean enabled = elements.get(element.name);
 
-            // 26.3: на «меню-экранах» (пауза, инвентарь, настройки) HUD не рисуем —
-            // иначе элементы и предметы просвечивают сквозь полупрозрачный фон меню.
-            // Чат (редактор HUD) и ClickGui клиента (GuiClient) — НЕ меню: там HUD
-            // остаётся видимым.
-            // Хард-скип: элемент.render() вообще не вызывается, чтобы ctx.item()
-            // (предметы, спрайты эффектов) не попадали в ванильный GuiRenderer.
-            boolean blockedByScreen = isGuiOpen && !isChatOpen
-                    && !(mc.gui.screen() instanceof vesence.ui.clickgui.GuiClient);
-            if (blockedByScreen) continue;
+            // HUD рисуется в onPreGuiRender() — на HEAD GuiRenderer.render(), то есть
+            // ДО ванильного GUI и экранов. Поэтому при открытом меню (пауза, инвентарь,
+            // настройки), списке игроков по Tab или ClickGui элементы остаются видимыми,
+            // но ванильный интерфейс ложится ПОВЕРХ них — HUD не перекрывает меню.
+            // Прячем HUD только под меню паузы (ESC) — там при желании можно вернуть,
+            // но по просьбе он тоже остаётся. Ничего не скипаем.
 
             element.alphaAnim.update();
             element.alphaAnim.run(enabled ? 1.0 : 0.0, 0.2, Easings.CUBIC_OUT);

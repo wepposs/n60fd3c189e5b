@@ -5,39 +5,27 @@
 
 layout(location = 0) out vec4 OutColor;
 
-// MOON — спокойная лунная ночь: детализированная луна с кратерами и фазой,
-// холодное сияние и Mie-лоб вокруг неё, рваные облака с серебряной каймой,
-// млечный путь и трёхслойные звёзды, приглушённые у лунного блика.
+// MOON — спокойная лунная ночь: фотографическая луна с кратерами и морями,
+// холодное небо от лунного света, рваные облака с серебряной кромкой,
+// Млечный Путь и звёзды, приглушённые вокруг луны.
 void main() {
     vec3 d = worldRay(gl_FragCoord.xy);
-    vec3 moonPos = worldDir(140.0, 52.0);
+    vec3 moonDir = worldDir(32.0, 34.0);
 
-    vec3 col = atmosphere(d,
-        vec3(0.10, 0.13, 0.20),
-        vec3(0.030, 0.045, 0.095),
-        vec3(0.008, 0.012, 0.030));
+    vec3 col = skyGradient(d, vec3(0.040, 0.062, 0.115), vec3(0.014, 0.026, 0.065), vec3(0.005, 0.010, 0.032));
+    float glow = pow(max(dot(d, moonDir), 0.0), 8.0);
+    col += vec3(0.10, 0.15, 0.28) * glow * 0.45 + vec3(0.05, 0.08, 0.15) * pow(max(dot(d, moonDir), 0.0), 2.0) * 0.3;
 
-    col = detailedMoon(col, d, moonPos, 0.048, vec3(0.95, 0.96, 1.00), 0.35);
+    float starDim = 1.0 - smoothstep(0.0, 0.5, glow * 3.0);
+    col += milkyWay(d, normalize(vec3(0.6, 0.3, -0.7)), 0.45) * starDim;
+    col += stars(d, 0.9) * starDim;
+    col = moonDisc(col, d, moonDir, 0.034, vec3(1.0, 0.97, 0.90) * 1.6, 0.35);
 
-    col += atmosphereSun(d,
-        vec3(0.0), vec3(0.0), vec3(0.0),
-        moonPos, vec3(0.55, 0.65, 0.90), 0.35);
+    vec3 haze = vec3(0.05, 0.075, 0.13);
+    Cloud cl = cloudCumulus(0.30, 5.0);
+    col = cloudVolume(col, d, cl, moonDir, vec3(0.55, 0.62, 0.80) * 0.9,
+        vec3(0.05, 0.07, 0.13), vec3(0.025, 0.035, 0.07), haze, 0.0);
 
-    // Облака в лунном свете: серебряные верхами, тёмные основания.
-    col = cloudVolume(col, d, moonPos, vec3(0.70, 0.78, 0.95),
-        vec3(0.08, 0.10, 0.16), vec3(0.62, 0.70, 0.86),
-        0.25, 0.060, 0.70, 149.0);
-
-    float glare = bell(length(d - moonPos), 0.35);
-    col += stars(d, 55.0, 0.85, 23.0) * (1.0 - glare * 0.60);
-    col += stars(d, 110.0, 0.30, 67.0) * (1.0 - glare * 0.60);
-    col += stars(d, 28.0, 0.50, 91.0) * (1.0 - glare * 0.60);
-
-    col += structuredDustBand(d, normalize(vec3(0.4, 0.30, 0.85)),
-        vec3(0.30, 0.38, 0.60), vec3(0.70, 0.68, 0.60), 0.35) * (1.0 - glare * 0.5);
-
-    col += horizonHaze(d, moonPos, vec3(0.45, 0.55, 0.80), 0.25);
-
-    col = grade(col, 1.10, -0.05);
-    OutColor = vec4(finishSky(col, d), 1.0);
+    col = grade(col, 1.05, 0.0);
+    OutColor = skyOutput(col, d);
 }

@@ -37,7 +37,9 @@ public class ModuleManager {
       this.module.add(new NoSlow());
       this.module.add(new Speed());
       this.module.add(new Jesus());
+      this.module.add(new BoatFly());
       this.module.add(new NoWeb());
+      this.module.add(new Spider());
       this.module.add(new GuiMove());
       this.module.add(new NoDelay());
 
@@ -47,13 +49,12 @@ public class ModuleManager {
 
       this.module.add(new vesence.module.impl.visuals.ThemeModule());
       this.module.add(new Hud());
+      this.module.add(new vesence.module.impl.visuals.Radio());
       this.module.add(new Arrows());
       this.module.add(new vesence.module.impl.visuals.JumpCircle());
       this.module.add(new vesence.module.impl.visuals.TargetESP());
       this.module.add(new vesence.module.impl.visuals.FakePlayer());
       this.module.add(new vesence.module.impl.visuals.SkeletonESP());
-      this.module.add(new vesence.module.impl.visuals.BloomTadpoles());
-      this.module.add(new vesence.module.impl.visuals.WorldStrips());
       this.module.add(new vesence.module.impl.visuals.ChunksAnimation());
       this.module.add(new vesence.module.impl.visuals.EnchantmentColor());
       this.module.add(new vesence.module.impl.visuals.HitBubbles());
@@ -176,9 +177,9 @@ public class ModuleManager {
       // =========================
 
       this.module.add(new vesence.module.impl.misc.BetterMinecraft());
-      this.module.add(new vesence.module.impl.misc.Optimization());
+      this.module.add(new vesence.module.impl.misc.FrameSync());
       this.module.add(new vesence.module.impl.visuals.Cape());
-      this.module.add(new vesence.module.impl.visuals.Attributes());
+      this.module.add(new vesence.module.impl.visuals.ChinaHat());
       this.module.add(new vesence.module.impl.visuals.particular.Particular());
 
       this.module.add(new StructureHelper());

@@ -216,9 +216,31 @@ public class GuiClient extends Screen {
    @Override
    public void tick() {
       super.tick();
+      // 26.3 (SDL): charTyped приходит в Screen только пока включён
+      // TextInputManager — ванильный EditBox включает его при фокусе.
+      // Наши поля (string-настройка, редактирование слайдера, поиск) —
+      // не EditBox, включаем/выключаем сами по текущему состоянию ввода.
+      syncTextInput();
       if (GuiScreen.exit && (float)GuiScreen.alphaPC.getValue() <= 0.01F) {
          onClose();
          GuiScreen.exit = false;
+      }
+   }
+
+   // последнее выставленное состояние TextInputManager
+   private boolean vesence$textInputOn;
+
+   private void syncTextInput() {
+      boolean want = GuiScreen.activeStringSetting != null
+              || GuiScreen.editingSliderSetting != null
+              || GuiScreen.activeSearch
+              || CompactGuiScreen.searchActive;
+      if (want != this.vesence$textInputOn) {
+         this.vesence$textInputOn = want;
+         try {
+            mc.onTextInputFocusChange(this, want);
+         } catch (Throwable ignored) {
+         }
       }
    }
 

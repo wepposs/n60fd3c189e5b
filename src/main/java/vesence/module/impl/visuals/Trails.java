@@ -81,7 +81,7 @@ public class Trails extends Module {
                     .withFragmentShader("core/position_color")
                     .withVertexBinding(0, DefaultVertexFormat.POSITION_COLOR)                    .withPrimitiveTopology(PrimitiveTopology.TRIANGLE_STRIP)
                     .withCull(false)
-                    .withDepthStencilState(new DepthStencilState(CompareOp.LESS_THAN_OR_EQUAL, false))
+                    .withDepthStencilState(new DepthStencilState(CompareOp.GREATER_THAN_OR_EQUAL, false))
                     .withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
                     .build());
     private static final RenderType STRIP_LAYER = RenderType.create("vesence_trails_strip",
@@ -93,7 +93,7 @@ public class Trails extends Module {
                     .withFragmentShader("core/position_color")
                     .withVertexBinding(0, DefaultVertexFormat.POSITION_COLOR)                    .withPrimitiveTopology(PrimitiveTopology.DEBUG_LINE_STRIP)
                     .withCull(false)
-                    .withDepthStencilState(new DepthStencilState(CompareOp.LESS_THAN_OR_EQUAL, false))
+                    .withDepthStencilState(new DepthStencilState(CompareOp.GREATER_THAN_OR_EQUAL, false))
                     .withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
                     .build());
     private static final RenderType LINE_LAYER = RenderType.create("vesence_trails_line",
@@ -267,7 +267,7 @@ public class Trails extends Module {
                         .withBindGroupLayout(BindGroupLayouts.SAMPLER0)
                         .withVertexBinding(0, DefaultVertexFormat.POSITION_TEX_COLOR)                        .withPrimitiveTopology(PrimitiveTopology.QUADS)
                         .withCull(false)
-                        .withDepthStencilState(new DepthStencilState(CompareOp.LESS_THAN_OR_EQUAL, false))
+                        .withDepthStencilState(new DepthStencilState(CompareOp.GREATER_THAN_OR_EQUAL, false))
                         .withColorTargetState(new ColorTargetState(BlendFunction.LIGHTNING))
                         .build());
         private static final RenderPipeline LINE_PIPELINE = RenderPipelines.register(
@@ -277,7 +277,7 @@ public class Trails extends Module {
                         .withFragmentShader("core/position_color")
                         .withVertexBinding(0, DefaultVertexFormat.POSITION_COLOR)                        .withPrimitiveTopology(PrimitiveTopology.DEBUG_LINES)
                         .withCull(false)
-                        .withDepthStencilState(new DepthStencilState(CompareOp.LESS_THAN_OR_EQUAL, false))
+                        .withDepthStencilState(new DepthStencilState(CompareOp.GREATER_THAN_OR_EQUAL, false))
                         .withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
                         .build());
         private static final RenderType BLOOM_LAYER = RenderType.create("vesence_dashtrail_bloom",
@@ -625,7 +625,7 @@ public class Trails extends Module {
                         .withBindGroupLayout(BindGroupLayouts.SAMPLER0)
                         .withVertexBinding(0, DefaultVertexFormat.POSITION_TEX_COLOR)                        .withPrimitiveTopology(PrimitiveTopology.QUADS)
                         .withCull(false)
-                        .withDepthStencilState(new DepthStencilState(CompareOp.LESS_THAN_OR_EQUAL, false))
+                        .withDepthStencilState(new DepthStencilState(CompareOp.GREATER_THAN_OR_EQUAL, false))
                         .withColorTargetState(new ColorTargetState(BlendFunction.LIGHTNING))
                         .build());
         private static final RenderType BLOOM_LAYER = RenderType.create("vesence_fizztrail_bloom",

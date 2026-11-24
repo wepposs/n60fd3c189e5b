@@ -33,7 +33,6 @@
     "ChatHudMixin",
     "GuiRendererMixin",
     "PlayerEntityMixin",
-    "PlayerEntityModelMixin",
     "LivingEntityMixin",
     "ClientConnectionMixin",
     "ClientPlayerEntityMixin",
@@ -100,16 +99,11 @@
     "FrameNoRenderMixin",
     "ItemModelManagerSphereHeadMixin",
     "FireworkRocketEntityMixin",
-    "optimization.EntityRendererLodMixin",
-    "optimization.LivingEntityRendererLodMixin",
-    "optimization.EntityViewScaleMixin",
-    "optimization.ParticleGroupMixin",
-    "optimization.BlockEntityDispatcherMixin",
-    "optimization.ItemClusterRenderStateMixin",
-    "optimization.QuadParticleGroupMixin",
-    "optimization.FontMixin",
+    "FrameSyncGameRendererMixin",
+    "FrameSyncHudMixin",
     "BaritoneAimProcessorMixin",
-    "BaritoneInputOverrideMixin"
+    "BaritoneInputOverrideMixin",
+    "BoatFlyMixin"
   ],
   "injectors": {
     "defaultRequire": 1

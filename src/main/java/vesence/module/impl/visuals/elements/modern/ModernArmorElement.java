@@ -23,8 +23,7 @@ import java.util.List;
 
 /**
  * Armor Hud: порт {@code ArmorSmartRenderer} из privatedlc (Excellent 1.16.5),
- * горизонтальная компоновка. Один ряд слотов: хотбар-слот (выбранный предмет
- * в руке) — шлем — нагрудник — штаны — ботинки. Под каждым слотом полоса
+ * горизонтальная компоновка. Один ряд слотов: шлем — нагрудник — штаны — ботинки. Под каждым слотом полоса
  * прочности (для брони) с цветовой шкалой износа; анимация заполнения и
  * превью-сет незерита в редакторе (чат открыт). В modern-дизайне vesence:
  * чёрная карточка с тенью, SF_SEMI, градиент полосы прочности.
@@ -40,7 +39,7 @@ public class ModernArmorElement extends HudElement {
     private static final float CARD_RADIUS = 10f;
     private static final float ITEM_SIZE   = 22f;
 
-    private static final int SLOTS = 5; // хотбар + 4 брони
+    private static final int SLOTS = 4;
 
     private static final int[] DAMAGE_COLORS = {
             Renderer2D.ColorUtil.getColor(80, 255, 80),
@@ -52,6 +51,7 @@ public class ModernArmorElement extends HudElement {
 
     private final Animation2[] durabilityAnims = new Animation2[SLOTS];
     private final Animation2 visibilityAnim = new Animation2();
+    private final List<ItemStack> slotScratch = new ArrayList<>(SLOTS);
 
     public ModernArmorElement() {
         super("Armor Hud", 320f, 560f);
@@ -66,17 +66,11 @@ public class ModernArmorElement extends HudElement {
             EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET
     };
 
-    /** Слоты по порядку: выбранный предмет хотбара, затем броня (шлем→ботинки). */
+    /** Слоты брони по порядку: шлем→нагрудник→штаны→ботинки. */
     private List<ItemStack> collectSlots(Minecraft mc, boolean preview) {
-        List<ItemStack> stacks = new ArrayList<>();
+        List<ItemStack> stacks = this.slotScratch;
+        stacks.clear();
         if (mc.player == null) return stacks;
-
-        // Хотбар-слот: предмет в основной руке.
-        ItemStack held = mc.player.getMainHandItem();
-        if (held.isEmpty() && preview) {
-            held = new ItemStack(Items.NETHERITE_SWORD);
-        }
-        stacks.add(held);
 
         for (EquipmentSlot slot : ARMOR_SLOTS) {
             ItemStack stack = mc.player.getItemBySlot(slot);
@@ -166,10 +160,10 @@ public class ModernArmorElement extends HudElement {
             renderer.rect(slotX, rowY, SLOT_SIZE, SLOT_SIZE, 6f,
                     ColorUtil.replAlpha(-1, (int) (18 * globalAlpha)));
 
-            // Полоса прочности под слотом (только для брони, слот 0 — хотбар).
-            float pct = i == 0 ? 1f : durabilityPct(stack);
+            // Полоса прочности под бронёй.
+            float pct = durabilityPct(stack);
             durabilityAnims[i].update();
-            durabilityAnims[i].run(stack.isEmpty() || i == 0 ? 0.0 : pct, 0.25, Easings.QUAD_OUT);
+            durabilityAnims[i].run(stack.isEmpty() ? 0.0 : pct, 0.25, Easings.QUAD_OUT);
             float animPct = (float) durabilityAnims[i].get();
 
             float barX = slotX;

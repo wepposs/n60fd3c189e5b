@@ -178,7 +178,7 @@ public class TargetESP extends Module {
                    .withBindGroupLayout(BindGroupLayouts.SAMPLER0)
                    .withVertexBinding(0, DefaultVertexFormat.POSITION_TEX_COLOR)                   .withPrimitiveTopology(PrimitiveTopology.QUADS)
                    .withCull(false)
-                   .withDepthStencilState(new DepthStencilState(CompareOp.LESS_THAN_OR_EQUAL, false))
+                   .withDepthStencilState(new DepthStencilState(CompareOp.GREATER_THAN_OR_EQUAL, false))
                    .withColorTargetState(new ColorTargetState(BlendFunction.LIGHTNING))
                    .build());
    private static final RenderPipeline TEXTURED_QUADS_NO_DEPTH_ADDITIVE_PIPELINE = RenderPipelines.register(
@@ -199,7 +199,7 @@ public class TargetESP extends Module {
                    .withFragmentShader("core/position_color")
                    .withVertexBinding(0, DefaultVertexFormat.POSITION_COLOR)                   .withPrimitiveTopology(PrimitiveTopology.TRIANGLE_STRIP)
                    .withCull(false)
-                   .withDepthStencilState(new DepthStencilState(CompareOp.LESS_THAN_OR_EQUAL, false))
+                   .withDepthStencilState(new DepthStencilState(CompareOp.GREATER_THAN_OR_EQUAL, false))
                    .withColorTargetState(new ColorTargetState(BlendFunction.LIGHTNING))
                    .build());
    private static final RenderPipeline RING_LINE_PIPELINE = RenderPipelines.register(
@@ -209,7 +209,7 @@ public class TargetESP extends Module {
                    .withFragmentShader("core/position_color")
                    .withVertexBinding(0, DefaultVertexFormat.POSITION_COLOR)                   .withPrimitiveTopology(PrimitiveTopology.DEBUG_LINE_STRIP)
                    .withCull(false)
-                   .withDepthStencilState(new DepthStencilState(CompareOp.LESS_THAN_OR_EQUAL, false))
+                   .withDepthStencilState(new DepthStencilState(CompareOp.GREATER_THAN_OR_EQUAL, false))
                    .withColorTargetState(new ColorTargetState(BlendFunction.LIGHTNING))
                    .build());
    private static final RenderType RING_STRIP_LAYER = RenderType.create("night_ring_strip", RenderSetup.builder(RING_STRIP_PIPELINE).createRenderSetup());
@@ -221,7 +221,7 @@ public class TargetESP extends Module {
                    .withFragmentShader("core/position_color")
                    .withVertexBinding(0, DefaultVertexFormat.POSITION_COLOR)                   .withPrimitiveTopology(PrimitiveTopology.QUADS)
                    .withCull(false)
-                   .withDepthStencilState(new DepthStencilState(CompareOp.LESS_THAN_OR_EQUAL, false))
+                   .withDepthStencilState(new DepthStencilState(CompareOp.GREATER_THAN_OR_EQUAL, false))
                    .withColorTargetState(new ColorTargetState(BlendFunction.LIGHTNING))
                    .build());
    private static final RenderType COLOR_QUADS_LAYER = RenderType.create("night_color_quads", RenderSetup.builder(COLOR_QUADS_PIPELINE).createRenderSetup());
@@ -242,7 +242,7 @@ public class TargetESP extends Module {
                    .withFragmentShader("core/position_color")
                    .withVertexBinding(0, DefaultVertexFormat.POSITION_COLOR)                   .withPrimitiveTopology(PrimitiveTopology.DEBUG_LINES)
                    .withCull(false)
-                   .withDepthStencilState(new DepthStencilState(CompareOp.LESS_THAN_OR_EQUAL, false))
+                   .withDepthStencilState(new DepthStencilState(CompareOp.GREATER_THAN_OR_EQUAL, false))
                    .withColorTargetState(new ColorTargetState(BlendFunction.LIGHTNING))
                    .build());
    private static final RenderType CUBE_LINES_LAYER = RenderType.create("targetesp_cube_lines", RenderSetup.builder(CUBE_LINES_PIPELINE).createRenderSetup());
@@ -255,7 +255,7 @@ public class TargetESP extends Module {
                    .withFragmentShader("core/position_color")
                    .withVertexBinding(0, DefaultVertexFormat.POSITION_COLOR)                   .withPrimitiveTopology(PrimitiveTopology.QUADS)
                    .withCull(false)
-                   .withDepthStencilState(new DepthStencilState(CompareOp.LESS_THAN_OR_EQUAL, false))
+                   .withDepthStencilState(new DepthStencilState(CompareOp.GREATER_THAN_OR_EQUAL, false))
                    .withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
                    .build());
    private static final RenderType TORUS_BODY_LAYER = RenderType.create("targetesp_torus_body", RenderSetup.builder(TORUS_BODY_PIPELINE).createRenderSetup());
@@ -268,7 +268,7 @@ public class TargetESP extends Module {
                    .withFragmentShader("core/position_color")
                    .withVertexBinding(0, DefaultVertexFormat.POSITION_COLOR)                   .withPrimitiveTopology(PrimitiveTopology.TRIANGLES)
                    .withCull(false)
-                   .withDepthStencilState(new DepthStencilState(CompareOp.LESS_THAN_OR_EQUAL, false))
+                   .withDepthStencilState(new DepthStencilState(CompareOp.GREATER_THAN_OR_EQUAL, false))
                    .withColorTargetState(new ColorTargetState(BlendFunction.LIGHTNING))
                    .build());
    private static final RenderType CRYSTAL_TRIANGLES_LAYER = RenderType.create("vesence_crystal_triangles", RenderSetup.builder(CRYSTAL_TRIANGLES_PIPELINE).createRenderSetup());
@@ -281,7 +281,7 @@ public class TargetESP extends Module {
                    .withBindGroupLayout(BindGroupLayouts.SAMPLER0)
                    .withVertexBinding(0, DefaultVertexFormat.POSITION_TEX_COLOR)                   .withPrimitiveTopology(PrimitiveTopology.QUADS)
                    .withCull(false)
-                   .withDepthStencilState(new DepthStencilState(CompareOp.LESS_THAN_OR_EQUAL, false))
+                   .withDepthStencilState(new DepthStencilState(CompareOp.GREATER_THAN_OR_EQUAL, false))
                    .withColorTargetState(new ColorTargetState(BlendFunction.LIGHTNING))
                    .build());
    private static final RenderType CRYSTAL_GLOW_LAYER = RenderType.create(

@@ -7,7 +7,7 @@ version = project.properties['mod_version'] ?: '1.0.0'
 group = 'vesence'
 
 base {
-    archivesName = 'vesence'
+    archivesName = 'weppos'
 }
 
 processResources {
@@ -85,6 +85,10 @@ dependencies {
     include(implementation("org.jetbrains.kotlin:kotlin-stdlib:1.9.10"))
     include(implementation("org.jetbrains.kotlinx:kotlinx-serialization-core:1.5.1"))
     include(implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.5.1"))
+    include(implementation("org.yaml:snakeyaml:2.4"))
+
+    // JLayer — чистый Java-декодер MP3 для интернет-радио (модуль Radio).
+    include(implementation("javazoom:jlayer:1.0.1"))
 
     implementation "maven.modrinth:geckolib:5.5.7"
     include "maven.modrinth:geckolib:5.5.7"

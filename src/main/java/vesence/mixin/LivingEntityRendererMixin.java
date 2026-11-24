@@ -16,7 +16,7 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import vesence.Vesence;
-import vesence.module.impl.visuals.Attributes;
+import vesence.module.impl.visuals.ChinaHat;
 import vesence.module.impl.visuals.Nametags;
 import vesence.module.impl.visuals.SeeInvisibles;
 
@@ -25,8 +25,8 @@ public class LivingEntityRendererMixin {
     @Inject(method = "submit(Lnet/minecraft/client/renderer/entity/state/LivingEntityRenderState;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;Lnet/minecraft/client/renderer/state/level/CameraRenderState;)V", at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/vertex/PoseStack;popPose()V"))
     private void vesence$headLayer(LivingEntityRenderState state, PoseStack matrices, SubmitNodeCollector queue, CameraRenderState camera, CallbackInfo ci) {
         if (!(state instanceof AvatarRenderState playerState) || !Vesence.isModInitialized()) return;
-        Attributes attributes = Vesence.get.manager.get(Attributes.class);
-        if (attributes == null || !attributes.isChinaHatActive()) return;
+        ChinaHat chinaHat = Vesence.get.manager.get(ChinaHat.class);
+        if (chinaHat == null || !chinaHat.enable) return;
         // 26.3: AvatarRenderer.extractRenderState заполняет state.id = entity.getId(),
         // поэтому ищем игрока по id — как в исходной версии (world.getEntityById).
         // Прежний обход с поиском по скину брал ПЕРВОГО игрока с таким же скином,
@@ -40,7 +40,7 @@ public class LivingEntityRendererMixin {
             }
         }
         if (player == null) return;
-        attributes.renderChinaHatOnHead(player, matrices, ((LivingEntityRenderer<?, ?, ?>)(Object)this).getModel(), queue);
+        chinaHat.renderOnHead(player, matrices, ((LivingEntityRenderer<?, ?, ?>)(Object)this).getModel(), queue);
     }
 
     @Redirect(method = "submit", at = @At(value = "INVOKE", target = "Lnet/minecraft/util/ARGB;multiply(II)I"))

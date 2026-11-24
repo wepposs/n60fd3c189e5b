@@ -31,6 +31,7 @@ import vesence.utils.render.math.animation.anim.util.Easings;
 import vesence.utils.render.text.ColorFormat;
 import vesence.utils.render.text.FontObject;
 import vesence.utils.render.text.FontRegistry;
+import vesence.utils.render.ttf.TtfFonts;
 
 import java.awt.*;
 import java.time.LocalTime;
@@ -59,17 +60,9 @@ public class MainScreen extends Screen {
     private static final float TITLE_SIZE = 55;
     private static final float TITLE_GAP  = 32f;
 
-    private static final Identifier BG_TEXTURE = Identifier.fromNamespaceAndPath("vesence", "images/mac/figma.png");
-
-    // Видео-фон главного меню: заранее разложенные кадры JPEG в ресурсах
-    // (assets/vesence/videos/menu/). Стримятся с префетчем — мгновенно, плавно,
-    // чётко (LINEAR), без рантайм-декода H.264. Кеш на сессию (см. VideoBackground).
-    private static final String BG_VIDEO_RESOURCE = "assets/vesence/videos/menu";
-    private VideoBackground videoBg;
-
-    private static final float BG_ZOOM_INITIAL = 1.08f;
-    private static final float BG_ZOOM_NORMAL = 1.0f;
-    private static final float BG_ZOOM_SPEED = 3f;
+    // Логотип анимирован; фон меню — его же кадры, размытые на весь экран (drawWash).
+    private static final String LOGO_VIDEO_RESOURCE = "assets/vesence/videos/logo";
+    private VideoBackground logoVideo;
 
     private static final float CHAR_DROP_HEIGHT = 30f;
     private static final float CHAR_ANIM_DURATION = 0.5f;
@@ -85,8 +78,6 @@ public class MainScreen extends Screen {
     private long introStartMillis = 0L;
     private int lastLangMode = -1;
 
-    private float currentBgZoom = BG_ZOOM_INITIAL;
-    private float targetBgZoom = BG_ZOOM_INITIAL;
 
     private static volatile boolean handlerRegistered = false;
     private static boolean menuMusicStarted = false;
@@ -97,6 +88,10 @@ public class MainScreen extends Screen {
     private final AccountSwitcherWindow accountSwitcher = new AccountSwitcherWindow();
 
     private static final float ICON_BTN_SIZE = 16;
+
+    // Единая палитра: почти чёрная база + один акцент.
+    private static final int C_ACCENT            = ColorUtil.getColor(237, 77, 104, 255);
+    private static final int C_BUTTON_FILL       = ColorUtil.getColor(11, 11, 15, 255);
 
     private final Animation2 langHoverAnim = new Animation2();
     private final Animation2 langPressAnim = new Animation2();
@@ -116,7 +111,7 @@ public class MainScreen extends Screen {
         final Animation2 hoverAnim = new Animation2();
         final Animation2 pressAnim = new Animation2();
         final Animation2 expandAnim = new Animation2();
-        float x, y, w;
+        float x, y, w, h;
 
         Button(String name, String icon, String description, Runnable action) {
             this.name = name;
@@ -141,19 +136,18 @@ public class MainScreen extends Screen {
     private float uniformExpandedH = COMPACT_H;
     private float langBtnFBX, langBtnFBY, langBtnFBW, langBtnFBH;
 
-    private float langFlagX, langFlagY, langFlagW, langFlagH, langFlagGap;
+    private float langRuX, langRuW, langEnX, langEnW, langY, langH;
 
     private String t(String ru, String eng) {
         return settingsWindow.t(ru, eng);
     }
 
     private float buttonHeight(int index) {
-        return index <= 1 ? TOP_ROW_H : BOT_ROW_H;
+        return 64f;
     }
 
     private float buttonWidth(int index) {
-        if (index == 2) return GRID_COLS * BTN_W + (GRID_COLS - 1) * COL_GAP;
-        return BTN_W;
+        return 270f;
     }
 
     private boolean splashFadeStarted(Minecraft mc) {
@@ -228,7 +222,7 @@ public class MainScreen extends Screen {
     }
 
     public MainScreen() {
-        super(Component.literal("vesence Menu"));
+        super(Component.literal("weppos Menu"));
     }
 
     @Override
@@ -260,13 +254,11 @@ public class MainScreen extends Screen {
         smoothedMouseX = Float.NaN;
         smoothedMouseY = Float.NaN;
         rainStartMillis = System.currentTimeMillis();
-        currentBgZoom = BG_ZOOM_NORMAL;
-        targetBgZoom = BG_ZOOM_NORMAL;
 
         // Видео-фон: создаём декодер один раз (init() вызывается повторно при
         // ресайзе окна), при повторном показе меню перезапускаем воспроизведение.
         // Видео-фон: кешируется на сессию; декод стартует в фоне при первом обращении.
-        videoBg = VideoBackground.of(BG_VIDEO_RESOURCE);
+        preloadLogo();
 
         ensureMenuMusic();
     }
@@ -275,7 +267,7 @@ public class MainScreen extends Screen {
         if (!menuMusicStarted) {
             menuMusicStarted = true;
             Thread musicThread = new Thread(
-                    () -> vesence.utils.render.utils.SoundUtil.playSound_mp3("music1", MENU_MUSIC_VOLUME, true),
+                    () -> vesence.utils.render.utils.SoundUtil.playSound_mp3("menu_theme", MENU_MUSIC_VOLUME, true),
                     "vesence-MenuMusic");
             musicThread.setDaemon(true);
             musicThread.start();
@@ -294,43 +286,67 @@ public class MainScreen extends Screen {
         return menuMusicStarted;
     }
 
-    private void drawBackground(Renderer2D renderer, int sw, int sh, float zoom) {
-        // 1) Пытаемся показать видео-кадр. currentFrameId() возвращает Identifier
-        //    текущего (по времени) кадра или null, пока клип декодируется в фоне.
-        Identifier vid = null;
-        if (videoBg != null) {
-            try {
-                vid = videoBg.currentFrameId();
-            } catch (Throwable t) {
-                vid = null;
-            }
+    /**
+     * Свет логотипа, размытый на весь экран: общий фон главного меню и приветствия.
+     * Кадр видео растягивается с запасом, дважды размывается, края уходят в виньетку.
+     */
+    // Кадры логотипа (250 PNG, 50 fps, 320x320) проигрываем сами по часам:
+    // потоковый декодер не успевал и анимация шла рывками.
+    private static final int LOGO_FRAMES = 250;
+    private static final double LOGO_FPS = 50.0;
+    private static final Identifier[] LOGO_IDS = new Identifier[LOGO_FRAMES];
+    static {
+        for (int i = 0; i < LOGO_FRAMES; i++) {
+            LOGO_IDS[i] = Identifier.fromNamespaceAndPath("vesence", String.format("videos/logo/f%04d.png", i));
         }
+    }
+    private static boolean logoPreloaded = false;
 
-        if (vid != null && videoBg.getWidth() > 0 && videoBg.getHeight() > 0) {
-            // На весь экран (0,0 → sw,sh) — как фон в других меню (напр. меню серверов).
-            renderer.drawImage(vid, 0, 0, sw, sh, -1, false, 0f);
-        } else {
-            // 2) Фолбэк: статичный PNG-фон (как раньше), с лёгким зумом.
-            float zoomedWidth = sw * zoom;
-            float zoomedHeight = sh * zoom;
-            float offsetX = (sw - zoomedWidth) / 2f;
-            float offsetY = (sh - zoomedHeight) / 2f;
-            Identifier bg = Identifier.fromNamespaceAndPath("vesence", "images/main_menu/background.png");
-            renderer.drawImage(bg, offsetX, offsetY, zoomedWidth, zoomedHeight);
+    /** Загружает все кадры в видеопамять заранее, чтобы первый круг не подтормаживал. */
+    static void preloadLogo() {
+        if (logoPreloaded) return;
+        logoPreloaded = true;
+        try {
+            Minecraft mc = Minecraft.getInstance();
+            for (Identifier id : LOGO_IDS) mc.getTextureManager().getTexture(id);
+        } catch (Throwable t) {
+            System.err.println("[weppos] logo preload failed: " + t);
         }
+    }
 
-        // 3) Затемняющий градиент снизу — поверх любого фона (видео или PNG).
-        renderer.gradient(0, 0, sw, sh, 0, ColorUtil.getColor(0,0), ColorUtil.getColor(0,0), ColorUtil.getColor(0,125), ColorUtil.getColor(0,125));
+    static Identifier logoFrame() {
+        long idx = (long) (System.nanoTime() / 1_000_000_000.0 * LOGO_FPS);
+        return LOGO_IDS[(int) (idx % LOGO_FRAMES)];
+    }
+
+    static void drawWash(Renderer2D r, int sw, int sh) {
+        r.rect(0, 0, sw, sh, ColorUtil.getColor(0, 0, 0, 255));
+        {
+            float size = Math.max(sw, sh) * 0.85f;
+            r.drawImage(logoFrame(), (sw - size) / 2f, (sh - size) / 2f - sh * 0.04f, size, size,
+                    ColorUtil.getColor(255, 255, 255, 190), false, 0f);
+            float radius = Math.max(40f, sh * 0.05f);
+            r.blur(0, 0, sw, sh, radius, 0f, 1f);
+            r.blur(0, 0, sw, sh, radius, 0f, 1f);
+        }
+        int edge = ColorUtil.getColor(0, 0, 0, 185);
+        int clear = ColorUtil.getColor(0, 0, 0, 0);
+        float vh = sh * 0.36f;
+        float vw = sw * 0.26f;
+        r.verticalGradient(0, 0, sw, vh, edge, clear);
+        r.verticalGradient(0, sh - vh, sw, vh, clear, edge);
+        r.horizontalGradient(0, 0, vw, sh, edge, clear);
+        r.horizontalGradient(sw - vw, 0, vw, sh, clear, edge);
     }
 
     private void updateButtonTranslations() {
         if (buttons.size() < 5) return;
-        String lang = settingsWindow.getSelectedLangMode() == 0 ? "ru" : "eng";
-        buttons.get(0).name = lang.equals("ru") ? "Одиночная игра" : "SinglePlayer";
-        buttons.get(1).name = lang.equals("ru") ? "Сетевая игра" : "MultiPlayer";
-        buttons.get(2).name = lang.equals("ru") ? "Аккаунт менеджер" : "Account Manager";
-        buttons.get(3).name = lang.equals("ru") ? "Настройки" : "Settings";
-        buttons.get(4).name = lang.equals("ru") ? "Выход" : "Quit";
+        boolean ru = settingsWindow.getSelectedLangMode() == 0;
+        buttons.get(0).name = ru ? "Одиночная игра" : "Singleplayer";
+        buttons.get(1).name = ru ? "Играть" : "Play";
+        buttons.get(2).name = ru ? "Аккаунты" : "Accounts";
+        buttons.get(3).name = ru ? "Настройки" : "Settings";
+        buttons.get(4).name = ru ? "Выход" : "Quit";
     }
 
     private static int getGlId(Identifier id) {
@@ -347,266 +363,169 @@ public class MainScreen extends Screen {
         return 0;
     }
 
-    private void renderVesence(Renderer2D renderer, int sw, int sh, Minecraft mc) {
-        if (renderer == null || mc.getWindow() == null) return;
-        this.renderer2D = renderer;
-        if (introStartMillis == 0L && splashFadeStarted(mc)) {
-            introStartMillis = System.currentTimeMillis();
-        }
-        // 26.3: GLFW.glfwGetCursorPos удалён; MouseHandler хранит актуальные координаты
-        // в пикселях ОКНА. Рисуем мы в пикселях ФРЕЙМБУФЕРА (sw/sh), поэтому курсор надо
-        // привести к той же системе — иначе на HiDPI (масштаб интерфейса != 1) все
-        // попадания по кнопкам смещаются. mouseClicked уже работает во фреймбуфере.
-        double fbRatioX = (double) sw / mc.getWindow().getWidth();
-        double fbRatioY = (double) sh / mc.getWindow().getHeight();
-        float fbMX = (float)(mc.mouseHandler.xpos() * fbRatioX);
-        float fbMY = (float)(mc.mouseHandler.ypos() * fbRatioY);
-        int fbMouseX = (int) fbMX;
-        int fbMouseY = (int) fbMY;
-        updateSmoothedMouse(fbMouseX, fbMouseY);
-        float lmx = toLogicalX(fbMouseX, sw);
-        float lmy = toLogicalY(fbMouseY, sh);
+    private static boolean inside(float px, float py, float x, float y, float w, float h) {
+        return px >= x && px <= x + w && py >= y && py <= y + h;
+    }
 
+    private float hoverOf(Animation2 anim, boolean hover) {
+        anim.update();
+        anim.run(hover ? 1.0 : 0.0, 0.25, Easings.CUBIC_OUT);
+        return (float) anim.get();
+    }
+
+    private void renderVesence(Renderer2D r, int sw, int sh, Minecraft mc) {
+        if (r == null || mc.getWindow() == null) return;
+        renderer2D = r;
+        if (introStartMillis == 0L && splashFadeStarted(mc)) introStartMillis = System.currentTimeMillis();
+
+        float mx = (float)(mc.mouseHandler.xpos() * sw / mc.getWindow().getWidth());
+        float my = (float)(mc.mouseHandler.ypos() * sh / mc.getWindow().getHeight());
+        updateSmoothedMouse(mx, my);
         openAnim.update();
+        float open = (float) openAnim.get();
+        currentMenuScale = 1f;
+        currentOffsetY = 0f;
+        // Наведение — по реальному курсору, а не сглаженному: иначе подсветка запаздывает.
+        float lx = mx;
+        float ly = my;
+        boolean interactive = !settingsWindow.isOpen() && !accountSwitcher.isOpen();
 
-        float centerX = sw / 2f;
-        float elementX = sw / 2f;
-
-        FontObject titleFont = FontRegistry.SF_MEDIUM;
-        DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm");
-        String titleText = LocalTime.now().format(TIME_FMT);
-        float titleH = renderer.measureText(titleFont, titleText, TITLE_SIZE).height;
-
-        float totalGridH = TOP_ROW_H + ROW_GAP + BOT_ROW_H + ROW_GAP + BOT_ROW_H;
-        float totalH  = titleH + TITLE_GAP + totalGridH;
-        float elementY  = (sh - totalH) / 2f - 115;
-
-        targetBgZoom = BG_ZOOM_NORMAL;
-        currentBgZoom += (targetBgZoom - currentBgZoom) * Math.min(1f, BG_ZOOM_SPEED * 0.016f);
-        renderer.rect(0, 0, sw, sh, ColorUtil.getColor(0, 0, 0, 255));
-        drawBackground(renderer, sw, sh, 1);
-        float t = openAnim.get();
-
-        // The account switcher is a right-docked overlay panel that slides in from the
-        // right edge on top of the menu, so the main menu itself stays in place.
-        currentMenuScale = 1.25f;
-        currentOffsetY = (1f - t) * -20f;
-
-        float mainMenuAlpha = t;
-        renderer.pushAlpha(mainMenuAlpha);
-        renderer.pushTranslation(0, currentOffsetY);
         updateButtonTranslations();
+        drawWash(r, sw, sh);
 
-        // Реальные текущие время / день недели / дата (вместо хардкода «14:30, Вторник»).
-        java.time.LocalDateTime nowDt = java.time.LocalDateTime.now();
-        boolean ruLang = settingsWindow.getSelectedLangMode() == 0;
-        java.util.Locale dateLoc = ruLang ? java.util.Locale.forLanguageTag("ru") : java.util.Locale.ENGLISH;
-        String hhmm = nowDt.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"));
-        String dayName = nowDt.getDayOfWeek().getDisplayName(java.time.format.TextStyle.FULL, dateLoc);
-        if (!dayName.isEmpty()) dayName = Character.toUpperCase(dayName.charAt(0)) + dayName.substring(1);
-        String todayLine = (ruLang ? "Сегодня - " : "Today - ") + hhmm + ", " + dayName;
+        final int white = ColorUtil.getColor(255, 255, 255, 255);
+        final float cx = sw / 2f;
+        final float edge = sh * 0.042f;
 
-        // Заголовок «падает» сверху вниз на своё место: плавное замедление
-        // (ease-out — быстро в начале, медленно в конце) + fade-in.
-        // Логотип убран; все строки центрированы по одной оси (elementX),
-        // независимо от их ширины — верхняя строка длиннее нижних, но
-        // визуально все три расположены строго друг под другом по центру.
-        float titleP = introProgress(0);
-        float titleFall = (1f - titleP) * -50f;
-        renderer.pushAlpha(titleP);
-        renderer.pushTranslation(0f, titleFall);
+        // Весь текст — через TtfFonts: Java растрит глифы ровно под размер, а координаты
+        // целые, поэтому буквы ложатся 1:1 на пиксели и остаются чёткими.
+        // (Атласные шрифты FontRegistry на мелком кегле «мылятся».)
 
-        String welcomeLine = t("Приветствуем тебя в ", "Welcome you to ");
-        String clientLine = "weppos client 1.21.11";
+        // --- верх: имя слева, язык справа ---
+        int topSize = Math.round(sh * 0.026f);
+        int topY = Math.round(edge);
+        r.pushAlpha(open * introProgress(3));
+        TtfFonts.SF_BOLD.drawString(r, "weppos", Math.round(edge), topY, topSize, white);
 
-        renderer.textCenter(FontRegistry.MONTSERRAT, elementX, elementY + 29, 50, welcomeLine, -1);
+        int langSize = Math.round(sh * 0.021f);
+        boolean ru = settingsWindow.getSelectedLangMode() == 0;
+        float enW = TtfFonts.SF_SEMIBOLD.getStringWidth("EN", langSize);
+        float ruW = TtfFonts.SF_SEMIBOLD.getStringWidth("RU", langSize);
+        float langGap = Math.round(langSize * 1.1f);
+        float langLine = TtfFonts.SF_SEMIBOLD.getHeight(langSize);
+        langEnX = Math.round(sw - edge - enW);
+        langRuX = Math.round(langEnX - langGap - ruW);
+        langRuW = ruW;
+        langEnW = enW;
+        langY = topY + (TtfFonts.SF_BOLD.getHeight(topSize) - langLine) / 2f;
+        langH = langLine;
+        float ruHover = hoverOf(langHoverAnim, interactive && !ru && inside(lx, ly, langRuX, langY, ruW, langH));
+        float enHover = hoverOf(langPressAnim, interactive && ru && inside(lx, ly, langEnX, langY, enW, langH));
+        TtfFonts.SF_SEMIBOLD.drawString(r, "RU", langRuX, Math.round(langY), langSize,
+                ru ? white : ColorUtil.overCol(ColorUtil.getColor(255, 255, 255, 105), white, ruHover));
+        TtfFonts.SF_SEMIBOLD.drawString(r, "EN", langEnX, Math.round(langY), langSize,
+                !ru ? white : ColorUtil.overCol(ColorUtil.getColor(255, 255, 255, 105), white, enHover));
+        r.popAlpha();
 
-        int[] clientColors = new int[] {ColorUtil.getColor(153, 255, 160),
-                ColorUtil.multDark(ColorUtil.getColor(153, 255, 160), 0.7f)};
-        float clientLetterSpacing = 5;
-        float clientWidth = renderer.measureText(FontRegistry.MONTSERRAT, clientLine, 50).width
-                + clientLetterSpacing * Math.max(0, clientLine.length() - 1);
-        renderer.text(FontRegistry.MONTSERRAT, elementX - clientWidth / 2f, elementY + 60, 50, clientLine, clientColors, 0, clientLetterSpacing);
-
-        renderer.textCenter(FontRegistry.MONTSERRAT, elementX, elementY + 89, 42, todayLine, ColorUtil.replAlpha(-1, 45));
-        renderer.textCenter(FontRegistry.MONTSERRAT, elementX, elementY + 175, 39, t("Давай начнем?", "Let's begin?"), ColorUtil.replAlpha(-1, 75));
-        renderer.popTransform();
-        renderer.popAlpha();
-
-        int curLang = settingsWindow.getSelectedLangMode();
-        if (lastLangMode == -1) {
-            lastLangMode = curLang;
-        } else if (curLang != lastLangMode) {
-            lastLangMode = curLang;
-            introStartMillis = System.currentTimeMillis();
-        }
-
-        uniformExpandedH = COMPACT_H;
-        float titleOffset = 0f;
-
-        int fbW = mc.getWindow().getScreenWidth();
-        int fbH = mc.getWindow().getScreenHeight();
-        double guiScale = (double) fbW / sw;
-
-        renderer.pushScale(currentMenuScale, centerX, sh / 2f);
-
-        float scaleCenterY = sh / 2f;
-        float menuScale = currentMenuScale;
-
-        renderer.pushTranslation(0, currentOffsetY);
-
-        float totalGridW = GRID_COLS * BTN_W + (GRID_COLS - 1) * COL_GAP;
-        float gridStartX = centerX - totalGridW / 2f;
-        float gridStartY = sh / 2f - totalGridH / 2f + 65;
-        float time2 = (System.currentTimeMillis() - rainStartMillis) / 1000f;
-
-        float[] colShift = new float[(int) GRID_COLS];
-        float maxButtonBottom = 0;
-        float fullW = GRID_COLS * BTN_W + (GRID_COLS - 1) * COL_GAP;
-        float stackY = gridStartY + TOP_ROW_H + ROW_GAP;
-
-        for (int i = 0; i < buttons.size(); i++) {
-            Button btn = buttons.get(i);
-            btn.w = buttonWidth(i);
-
-            if (i <= 1) {
-                btn.x = gridStartX + i * (BTN_W + COL_GAP);
-                btn.y = gridStartY;
-            } else if (i == 2) {
-                btn.x = gridStartX;
-                btn.y = stackY;
-                stackY += buttonHeight(i) + ROW_GAP;
-            } else {
-                btn.x = gridStartX + (i - 3) * (BTN_W + COL_GAP);
-                btn.y = stackY;
-            }
-
-            float introP = introProgress(4 + i);
-            float btnAlpha = introP;
-            float btnOffsetY = (1f - introP) * INTRO_Y_SLIDE;
-
-            float bx = btn.x;
-            float by = btn.y + btnOffsetY;
-
-            float currentBtnW = btn.w;
-            float currentBtnH = buttonHeight(i);
-
-            maxButtonBottom = Math.max(maxButtonBottom, btn.y + currentBtnH);
-
-            boolean hovered = introP >= 0.999f && lmx >= bx && lmx <= bx + currentBtnW
-                    && lmy >= by && lmy <= by + currentBtnH;
-
-            btn.hoverAnim.update();
-            btn.hoverAnim.run(hovered ? 1.0 : 0.0, 0.35, Easings.CUBIC_OUT);
-
-            float hT = btn.hoverAnim.get();
-
-            float bw = currentBtnW;
-            float bh = currentBtnH;
-            float drawX = bx;
-            float drawY = by;
-
-            renderer.pushAlpha(btnAlpha);
-            float buttonRADIUS;
-            if(i <= 1) {
-                buttonRADIUS = 9;
-            } else {
-                buttonRADIUS = 8   ;
-            }
-            boolean isQuit = i == 4;
-            boolean isAlt = i == 2;
-            String displayName = btn.name;
-            renderer.blur(bx, by, bw, bh, 15, buttonRADIUS, 1);
-            if (i == 4) {
-                renderer.rect(bx, by, bw, bh, buttonRADIUS, ColorUtil.getColor(183,49,49, 125));
-            } else {
-                renderer.rect(bx, by, bw, bh, buttonRADIUS, ColorUtil.getColor(0,0,0, 100));
-            }
-
-            if(i <= 1) {
-                Identifier BG_TEXTURE = Identifier.fromNamespaceAndPath("vesence", i == 0 ? "images/main_menu/single_player.png" : "images/main_menu/multi_player.png");
-                renderer.drawImage(BG_TEXTURE, bx + 10, by + 38, bw - 20, 62, ColorUtil.overCol(ColorUtil.getColor(255, 125), -1, hT), false, 5);
-            }
-            float textPad = 10;
-            int nameColor = ColorUtil.overCol(
-                    ColorUtil.replAlpha(-1, 100),
-                    ColorUtil.replAlpha(isQuit ? ColorUtil.getColor(255, 150, 155) : -1, 255),
-                    hT);
-            int iconColor = ColorUtil.overCol(
-                    ColorUtil.replAlpha(-1, 100),
-                    ColorUtil.replAlpha(ColorUtil.getColor(124, 176, 255), 255),
-                    hT);
-            float compactCenterY = drawY + COMPACT_H / 2f;
-            String displayIcon = btn.icon;
-            if (i == 4) displayName = t("Выход из игры", "Quit");
-
-            if(i == 2) {
-                renderer.textCenter(FontRegistry.MONTSERRAT, bx + bw / 2f + 12, compactCenterY + 27 / 4f, 25, displayName, nameColor);
-                renderer.textCenter(FontRegistry.MON, bx + bw / 2f - (renderer.measureText(FontRegistry.MONTSERRAT, displayName, 25).width / 2f) - 2, compactCenterY + 33 / 4f, 27, displayIcon, nameColor);
-            } else {
-                renderer.text(FontRegistry.MONTSERRAT, bx + 15, compactCenterY + 27 / 4f, 25, displayName, nameColor);
-            }
-            if(!isAlt) {
-                renderer.rect(bx + bw - 39, compactCenterY - 23 / 4f, 1, 15, ColorUtil.replAlpha(-1, (int) (20 * btnAlpha)));
-            }
-            if(!isAlt) {
-                renderer.textRight(FontRegistry.MON, bx + bw - 13.5f, compactCenterY + 36 / 4f, 30, displayIcon, nameColor);
-            }
-
-            renderer.popAlpha();
-        }
+        // --- центр: логотип, название, кнопка ---
+        // Кадры логотипа 320x320: больше ~1.3x от родного размера уже мылится.
+        float orb = Math.round(Math.min(sh * 0.42f, 320f * 1.3f));
+        int titleSize = Math.round(sh * 0.058f);
+        float titleLine = TtfFonts.SF_BOLD.getHeight(titleSize);
+        int btnH = Math.round(sh * 0.068f);
+        float gap = sh * 0.03f;
+        float blockH = orb + titleLine + gap + btnH;
+        float orbY = Math.round((sh - blockH) / 2f - sh * 0.02f);
 
         {
-            float flagW = 55, flagH = 55, flagGap = 11;
-            float langRowW = flagW * 2 + flagGap;
-            float langX = gridStartX;
-            float baseLangY = maxButtonBottom + ROW_GAP + 4;
-            boolean ru = settingsWindow.getSelectedLangMode() == 0;
-
-            float ruIntro = introProgress(11);
-            float ukIntro = introProgress(12);
-            float ruY = baseLangY + (1f - ruIntro) * INTRO_Y_SLIDE;
-            float ukY = baseLangY + (1f - ukIntro) * INTRO_Y_SLIDE;
-
-            float ruX = langX;
-            float ukX = langX + flagW + flagGap;
-
-            langFlagY = baseLangY; langFlagH = flagH; langFlagW = flagW; langFlagGap = flagGap; langFlagX = langX;
-
-            boolean ruHov = lmx >= ruX && lmx <= ruX + flagW && lmy >= baseLangY && lmy <= baseLangY + flagH;
-            boolean ukHov = lmx >= ukX && lmx <= ukX + flagW && lmy >= baseLangY && lmy <= baseLangY + flagH;
-
-            int ruBaseA = ru ? 255 : (ruHov ? 200 : 110);
-            int ruTint = ColorUtil.replAlpha(-1, Math.round(ruBaseA * ruIntro));
-            renderer.drawImage(Identifier.fromNamespaceAndPath("vesence", "images/main_menu/ru.png"), ruX, ruY, flagW, flagH, ruTint, false, 4);
-
-            int ukBaseA = !ru ? 255 : (ukHov ? 200 : 110);
-            int ukTint = ColorUtil.replAlpha(-1, Math.round(ukBaseA * ukIntro));
-            renderer.drawImage(Identifier.fromNamespaceAndPath("vesence", "images/main_menu/uk.png"), ukX, ukY, flagW, flagH, ukTint, false, 4);
+            Identifier frame = logoFrame();
+            float floatY = (float) Math.sin(System.currentTimeMillis() / 1600.0) * sh * 0.004f;
+            r.pushAlpha(open * introProgress(0));
+            // SCREEN: тёмный фон кадра исчезает, остаётся только светящийся знак.
+            r.pushBlendMode(BlendMode.SCREEN);
+            r.drawImage(frame, Math.round(cx - orb / 2f), orbY + floatY, orb, orb, -1, false, orb / 2f);
+            r.popBlendMode();
+            r.popAlpha();
         }
 
-        if (!accountSwitcher.isOpen()) {
-            settingsWindow.renderWindow(renderer, sw, sh, lmx, lmy, centerX);
-        }
-        renderer.popTransform();
-        renderer.popTransform();
+        String titleA = "weppos";
+        String titleB = " client";
+        float wa = TtfFonts.SF_BOLD.getStringWidth(titleA, titleSize);
+        float wb = TtfFonts.SF_MEDIUM.getStringWidth(titleB, titleSize);
+        float titleX = Math.round(cx - (wa + wb) / 2f);
+        float titleY = Math.round(orbY + orb);
+        float pt = introProgress(1);
+        float slideT = Math.round((1f - pt) * INTRO_Y_SLIDE);
+        r.pushAlpha(open * pt);
+        TtfFonts.SF_BOLD.drawString(r, titleA, titleX, titleY + slideT, titleSize, white);
+        TtfFonts.SF_MEDIUM.drawString(r, titleB, Math.round(titleX + wa), titleY + slideT, titleSize,
+                ColorUtil.getColor(255, 255, 255, 115));
+        r.popAlpha();
 
-        // Pop the main-menu intro alpha before drawing the alt manager so the overlay
-        // panel always renders at full opacity, independent of the menu's fade-in.
-        renderer.popAlpha();
+        Button play = buttons.get(1);
+        int playFont = Math.round(btnH * 0.36f);
+        float btnW = Math.round(Math.max(btnH * 3.6f, TtfFonts.SF_SEMIBOLD.getStringWidth(play.name, playFont) + btnH * 1.6f));
+        play.x = Math.round(cx - btnW / 2f);
+        play.y = Math.round(titleY + titleLine + gap);
+        play.w = btnW;
+        play.h = btnH;
+        float pp = introProgress(2);
+        boolean playHover = interactive && pp > 0.98f && inside(lx, ly, play.x, play.y, play.w, play.h);
+        float hov = hoverOf(play.hoverAnim, playHover);
+        play.pressAnim.update();
+        play.pressAnim.run(mouseDown && pressedIndex == 1 ? 1.0 : 0.0, 0.16, Easings.CUBIC_OUT);
+        float press = (float) play.pressAnim.get();
+        float scale = 1f + hov * 0.03f - press * 0.05f;
+        float playY = Math.round(play.y + (1f - pp) * INTRO_Y_SLIDE);
+        r.pushAlpha(open * pp);
+        // Масштабируем только плашку: текст под scale стал бы нечётким.
+        r.pushScale(scale, cx, playY + btnH / 2f);
+        r.rect(play.x, playY, btnW, btnH, btnH * 0.26f, white);
+        r.popTransform();
+        float playLine = TtfFonts.SF_SEMIBOLD.getHeight(playFont);
+        TtfFonts.SF_SEMIBOLD.drawCenteredString(r, play.name, Math.round(cx),
+                Math.round(playY + (btnH - playLine) / 2f), playFont, ColorUtil.getColor(0, 0, 0, 255));
+        r.popAlpha();
+
+        // --- низ: остальные действия тихой строкой ---
+        int[] links = {0, 2, 3, 4};
+        int linkSize = Math.round(sh * 0.021f);
+        float linkLine = TtfFonts.SF_SEMIBOLD.getHeight(linkSize);
+        float linkGap = Math.round(sh * 0.042f);
+        float total = 0f;
+        for (int k = 0; k < links.length; k++) {
+            total += TtfFonts.SF_SEMIBOLD.getStringWidth(buttons.get(links[k]).name, linkSize);
+            if (k > 0) total += linkGap;
+        }
+        float linkY = Math.round(sh - edge - linkLine);
+        float x = Math.round(cx - total / 2f);
+        float pl = introProgress(3);
+        r.pushAlpha(open * pl);
+        for (int index : links) {
+            Button b = buttons.get(index);
+            float w = TtfFonts.SF_SEMIBOLD.getStringWidth(b.name, linkSize);
+            b.x = x;
+            b.y = linkY;
+            b.w = w;
+            b.h = linkLine;
+            float h = hoverOf(b.hoverAnim, interactive && pl > 0.98f && inside(lx, ly, b.x, b.y, b.w, b.h));
+            TtfFonts.SF_SEMIBOLD.drawString(r, b.name, x, linkY, linkSize,
+                    ColorUtil.overCol(ColorUtil.getColor(255, 255, 255, 128), white, h));
+            x += w + linkGap;
+        }
+        r.popAlpha();
+
+        if (!accountSwitcher.isOpen()) settingsWindow.renderWindow(r, sw, sh, lx, ly, sw / 2f);
 
         accountSwitcher.setRussian(settingsWindow.getSelectedLangMode() == 0);
-        float altDim = accountSwitcher.getSlide();
-        if (altDim > 0.001f) {
-            renderer.blur(0, 0, sw, sh, 18, 0, altDim);
-            renderer.rect(0, 0, sw, sh, ColorUtil.getColor(0, 0, 0, Math.round(150 * altDim)));
+        float dim = accountSwitcher.getSlide();
+        if (dim > 0.001f) {
+            r.blur(0, 0, sw, sh, 18, 0, dim);
+            r.rect(0, 0, sw, sh, ColorUtil.getColor(0,0,0,Math.round(150 * dim)));
         }
-        float musicVol = MENU_MUSIC_VOLUME + (MENU_MUSIC_VOLUME_ALT - MENU_MUSIC_VOLUME) * altDim;
-        try {
-            vesence.utils.render.utils.SoundUtil.setCurrentVolume(musicVol);
-        } catch (Throwable ignored) {
-        }
-        accountSwitcher.render(renderer, sw, sh, fbMX, fbMY);
+        try { vesence.utils.render.utils.SoundUtil.setCurrentVolume(MENU_MUSIC_VOLUME + (MENU_MUSIC_VOLUME_ALT - MENU_MUSIC_VOLUME) * dim); }
+        catch (Throwable ignored) {}
+        accountSwitcher.render(r, sw, sh, mx, my);
     }
 
     private void updateSmoothedMouse(float targetX, float targetY) {
@@ -684,31 +603,25 @@ public class MainScreen extends Screen {
                 for (int i = 0; i < buttons.size(); i++) {
                     Button b = buttons.get(i);
                     System.out.println("[input]   button[" + i + "] '" + b.name + "' rect="
-                            + (int) b.x + "," + (int) b.y + " " + (int) b.w + "x" + (int) buttonHeight(i)
-                            + " hit=" + (lx >= b.x && lx <= b.x + b.w
-                                    && ly >= b.y && ly <= b.y + buttonHeight(i)));
+                            + (int) b.x + "," + (int) b.y + " " + (int) b.w + "x" + (int) b.h
+                            + " hit=" + inside(lx, ly, b.x, b.y, b.w, b.h));
                 }
             }
             if (accountSwitcher.click(fbX, fbY, fbW, fbH)) return true;
 
             if (!settingsWindow.isOpen() && !accountSwitcher.isOpen()) {
 
-                if (ly >= langFlagY && ly <= langFlagY + langFlagH) {
-                    float ruX = langFlagX;
-                    float ukX = langFlagX + langFlagW + langFlagGap;
-                    if (lx >= ruX && lx <= ruX + langFlagW) {
-                        if (settingsWindow.getSelectedLangMode() != 0) settingsWindow.toggleLanguage();
-                        return true;
-                    }
-                    if (lx >= ukX && lx <= ukX + langFlagW) {
-                        if (settingsWindow.getSelectedLangMode() == 0) settingsWindow.toggleLanguage();
-                        return true;
-                    }
+                if (inside(lx, ly, langRuX, langY, langRuW, langH)) {
+                    if (settingsWindow.getSelectedLangMode() != 0) settingsWindow.toggleLanguage();
+                    return true;
+                }
+                if (inside(lx, ly, langEnX, langY, langEnW, langH)) {
+                    if (settingsWindow.getSelectedLangMode() == 0) settingsWindow.toggleLanguage();
+                    return true;
                 }
                 for (int i = 0; i < buttons.size(); i++) {
                     Button btn = buttons.get(i);
-                    if (lx >= btn.x && lx <= btn.x + btn.w
-                            && ly >= btn.y && ly <= btn.y + buttonHeight(i)) {
+                    if (inside(lx, ly, btn.x, btn.y, btn.w, btn.h)) {
                         pressedIndex = i;
                         return true;
                     }
@@ -736,8 +649,7 @@ public class MainScreen extends Screen {
 
             if (pressedIndex >= 0 && pressedIndex < buttons.size()) {
                 Button btn = buttons.get(pressedIndex);
-                if (lx >= btn.x && lx <= btn.x + btn.w
-                        && ly >= btn.y && ly <= btn.y + buttonHeight(pressedIndex)) {
+                if (inside(lx, ly, btn.x, btn.y, btn.w, btn.h)) {
                     btn.action.run();
                 }
             }

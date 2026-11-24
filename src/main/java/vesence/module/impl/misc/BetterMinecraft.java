@@ -521,8 +521,8 @@ public class BetterMinecraft extends Module {
     * <ul>
     *   <li>предметы сдаём в {@link GuiGraphicsExtractor} прямо здесь — они попадают в
     *       {@code GuiRenderState} и ванильный {@code GuiRenderer} рисует их в GUI-проходе;</li>
-    *   <li>всё остальное (панели, бары, подсветка слота) рисуем сырым GL в пост-GUI проходе
-    *       через {@link Vesence#deferOverlay} — уже ПОВЕРХ предметов.</li>
+    *   <li>всё остальное (панели, бары, подсветка слота) рисуем сырым GL в HUD-проходе
+    *       через {@link Vesence#deferHudOverlay} — ДО GUI, предметы сверху.</li>
     * </ul>
     */
    public static void renderCustomHotBar(GuiGraphicsExtractor ctx, DeltaTracker tickCounter, boolean renderValues) {
@@ -549,10 +549,13 @@ public class BetterMinecraft extends Module {
          }
       }
 
-      Vesence.deferOverlay(() -> drawCustomHotBar(client, renderValues));
+      // HUD-проход, не пост-GUI: панель/блюр/подсветка должны оказаться ПОД предметами.
+      // Если рисовать их в post-GUI, полупрозрачная панель и blur накрывают уже
+      // отрисованные спрайты, и предметы в хотбаре выглядят «прозрачными».
+      Vesence.deferHudOverlay(() -> drawCustomHotBar(client, renderValues));
    }
 
-   /** Геометрия хотбара, нужная и extract-фазе (предметы), и пост-GUI проходу (панели). */
+   /** Геометрия хотбара, нужная и extract-фазе (предметы), и HUD-проходу (панели). */
    private record HotbarGeom(float scale, float slot, float itemSize, float slotStartX, float slotY,
                              float offSlotX, float offSlotY) {
    }

@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "vesence",
   "version": "${version}",
-  "name": "Vesence Recode",
-  "description": "Vesence Client port to 1.21.11",
+  "name": "weppos",
+  "description": "weppos client for Minecraft 26.3",
   "authors": [
-    "Vesence Team"
+    "weppos"
   ],
   "contact": {
     "homepage": "",

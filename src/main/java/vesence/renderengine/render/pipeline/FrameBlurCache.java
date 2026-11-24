@@ -1,9 +1,13 @@
 package vesence.renderengine.render.pipeline;
 
 import com.mojang.renderpearl.api.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.GpuTexture;
+import com.mojang.renderpearl.api.GpuFormat;
+import com.mojang.renderpearl.api.commands.CommandEncoder;
+import com.mojang.renderpearl.backend.opengl.GlTexture;
 import net.minecraft.client.Minecraft;
 import com.mojang.blaze3d.pipeline.RenderTarget;
-import com.mojang.renderpearl.backend.opengl.GlTexture;
+import com.mojang.blaze3d.systems.RenderSystem;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
 import org.lwjgl.opengl.GL13;
@@ -36,6 +40,14 @@ public final class FrameBlurCache {
    private static float lastSigma = -1f;
    private static int resultTex = 0;
    private static int cachedWidth, cachedHeight;
+
+   // Безопасная копия кадра. BlurPipeline/BlurSquirclePipeline рисуют прямо в main
+   // render target, поэтому сэмплить его же текстуру нельзя — на большинстве GPU это
+   // даёт неопределённый результат (мерцающие полосы/«битый монитор»). Копируем кадр
+   // в отдельную текстуру и размываем уже её.
+   private static GpuTexture copyTexture;
+   private static int copyTexId = 0;
+   private static int copyW, copyH;
 
    private FrameBlurCache() {
    }
@@ -205,6 +217,63 @@ public final class FrameBlurCache {
 
    }
 
+   /**
+    * Возвращает текстуру с копией текущего кадра, которую безопасно сэмплить во время
+    * отрисовки в main render target.
+    *
+    * @return id текстуры или 0, если копию сделать не удалось
+    */
+   public static int prepareSafeSource() {
+      try {
+         Minecraft mc = Minecraft.getInstance();
+         if (mc == null || mc.gameRenderer == null) return 0;
+
+         RenderTarget mainFb = mc.gameRenderer.mainRenderTarget();
+         if (mainFb == null || mainFb.getColorTexture() == null) return 0;
+
+         int w = mainFb.width;
+         int h = mainFb.height;
+         if (w <= 0 || h <= 0) return 0;
+
+         ensureCopyTarget(w, h);
+         if (copyTexId == 0) return 0;
+
+         // Копия через Blaze3D/RenderPearl — тот же проверенный путь, что в
+         // TorusReflectionRenderer и FogBlurPipeline: raw-GL потом безопасно читает
+         // отдельную текстуру, а не тот framebuffer, в который рисует.
+         CommandEncoder encoder = RenderSystem.getDevice().createCommandEncoder();
+         encoder.copyTextureToTexture(mainFb.getColorTexture(), copyTexture, 0, 0, 0, 0, 0, w, h);
+         return copyTexId;
+      } catch (Exception e) {
+         System.err.println("FrameBlurCache.prepareSafeSource failed: " + e.getMessage());
+         return 0;
+      }
+   }
+
+   private static void ensureCopyTarget(int w, int h) {
+      if (copyTexture != null && copyW == w && copyH == h) return;
+      releaseCopyTarget();
+
+      copyTexture = RenderSystem.getDevice().createTexture(
+            () -> "vesence:blur_frame_copy",
+            GpuTexture.USAGE_COPY_DST | GpuTexture.USAGE_TEXTURE_BINDING,
+            GpuFormat.RGBA8_UNORM,
+            w, h, 1, 1);
+      copyTexId = copyTexture instanceof GlTexture gl ? gl.glId() : 0;
+      copyW = w;
+      copyH = h;
+   }
+
+   private static void releaseCopyTarget() {
+      if (copyTexture != null) {
+         copyTexture.close();
+         copyTexture = null;
+      }
+      copyTexId = 0;
+      copyW = 0;
+      copyH = 0;
+   }
+
    public static int getBlurredTexture() {
       return resultTex;
    }
@@ -240,6 +309,7 @@ public final class FrameBlurCache {
 
    public static void close() {
       releaseTargets();
+      releaseCopyTarget();
       if (shader != null) {
          shader.delete();
          shader = null;

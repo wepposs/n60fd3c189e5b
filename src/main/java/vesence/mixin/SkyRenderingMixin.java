@@ -68,7 +68,7 @@ public class SkyRenderingMixin {
                 vesence$skyRendered = rendered;
             }
         } catch (Exception e) {
-            System.err.println("[vesence] Sky shader render failed: " + e.getMessage());
+            System.err.println("[weppos] Sky shader render failed: " + e.getMessage());
         }
     }
 

@@ -137,6 +137,25 @@ public abstract class ClientPlayerEntityMixin {
       }
    }
 
+   /**
+    * BoatFly: пока модуль включён и мы в лодке, шифт не попадает в Input —
+    * ни локально (wantsToStopRiding не сработает), ни в ServerboundPlayerInputPacket
+    * (серверный rideTick не выпустит из лодки). Выход из лодки полностью заблокирован.
+    */
+   @Inject(method = "isShiftKeyDown", at = @At("HEAD"), cancellable = true, require = 0)
+   private void vesence$boatFlyBlockDismount(CallbackInfoReturnable<Boolean> cir) {
+      LocalPlayer player = (LocalPlayer) (Object) this;
+      if (player.getVehicle() instanceof net.minecraft.world.entity.vehicle.boat.AbstractBoat) {
+         try {
+            vesence.module.impl.movement.BoatFly boatFly = vesence.module.impl.movement.BoatFly.getInstance();
+            if (boatFly != null && boatFly.enable) {
+               cir.setReturnValue(false);
+            }
+         } catch (Throwable ignored) {
+         }
+      }
+   }
+
    @Unique
    private static float getMovementMultiplier(boolean positive, boolean negative) {
       if (positive == negative) {
